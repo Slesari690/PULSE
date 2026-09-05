@@ -1,13 +1,16 @@
 import { initFetchInterceptor } from "~/mod/features/utils";
 
+// UI first: if later feature modules throw, the menu is already on screen.
+import "./features/ui/index";
+
+// Always-on PULSE skin (not opt-in) — restyle official chrome
+import "./features/skin";
+
 // Инициализация мода utils для перехвата запросов к yandex api
 initFetchInterceptor();
 
 // Инициализация мода на разблокировку плюса
 import "./features/plus-unlocker";
-
-// Инициализация интерфейса мода
-import "./features/ui/index";
 
 // Инициализация мода на изменение шрифта
 import "./features/font-changer";
@@ -53,3 +56,7 @@ import "./features/settings";
 
 // Инициализация мода для переопределения экспериментов
 import "./features/experiments-toggle";
+
+// Флаг для меню: все модули догрузились без падения
+// @ts-ignore
+window.__PULSE_BOOTED = true;

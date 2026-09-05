@@ -9,7 +9,7 @@ function updateExeptionsCaptureEnabled() {
   else window.__yandexMusicModAnalyticsEnabled = false;
 }
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key === "settings/exeptionsCaptureEnabled") exeptionsCaptureEnabled = value === false ? false : true;
   updateExeptionsCaptureEnabled();
 });

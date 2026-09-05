@@ -18,7 +18,7 @@ async function updateScale() {
   document.head.appendChild(styleSheet);
 }
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key.includes("scale-changer")) updateScale();
 });
 

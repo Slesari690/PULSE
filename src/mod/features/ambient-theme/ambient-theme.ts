@@ -20,7 +20,7 @@ let enabled = false;
 let currentAccent = "#4A9EFF";
 let unsub: (() => void) | null = null;
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key === "ambient-theme/enabled") {
     enabled = value === true;
     if (enabled) start();

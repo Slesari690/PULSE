@@ -8,8 +8,8 @@ let customThemeEnabled = false;
 let customThemeAccent = "#4A9EFF";
 
 async function updateTheme() {
-  const enabled = (await window.yandexMusicMod.getStorageValue("custom-themes/enabled")) === true ? true : false;
-  const accent = await window.yandexMusicMod.getStorageValue("custom-themes/accent");
+  const enabled = (await window.yandexMusicMod.getStorageValue("custom-themes/enabled")) === false ? false : true;
+  const accent = (await window.yandexMusicMod.getStorageValue("custom-themes/accent")) || "#A78BFA";
   const playerColorsReplaceEnabled =
     (await window.yandexMusicMod.getStorageValue("custom-themes/playerColorsReplace")) === false ? false : true;
   const disableVibeAnimation = await window.yandexMusicMod.getStorageValue("custom-themes/disableVibeAnimation");
@@ -203,7 +203,7 @@ function updateVibeBackgroundColor() {
   }
 }
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key.includes("custom-themes")) updateTheme();
 });
 

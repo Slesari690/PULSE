@@ -1,0 +1,49 @@
+/* PULSE skin: recolor only. Do not change radii, fonts, or layout. */
+
+:root,
+html,
+html.ym-dark-theme,
+html.ym-light-theme,
+.ym-dark-theme,
+.ym-light-theme {
+  --ym-background-color-primary-enabled-basic: #09090f !important;
+  --ym-background-color-primary-enabled-content: #101018 !important;
+  --ym-background-color-primary-enabled-popover: #16161f !important;
+  --ym-background-color-primary-enabled-player: #12121a !important;
+  --ym-background-color-primary-enabled-header: rgba(9, 9, 15, 0.72) !important;
+
+  --ym-logo-color-primary-enabled: #f4f1ff !important;
+  --ym-logo-color-primary-variant: #c4b5fd !important;
+  --ym-logo-color-primary-player: #c4b5fd !important;
+  --ym-logo-color-primary-text: #c4b5fd !important;
+
+  --ym-controls-color-primary-default-enabled: #a78bfa !important;
+  --ym-controls-color-primary-default-hovered: #c4b5fd !important;
+  --ym-controls-color-primary-default-pressed: #7c5cfc !important;
+  --ym-controls-color-primary-on_default-enabled: #0b0b14 !important;
+  --ym-controls-color-primary-text-hovered: #c4b5fd !important;
+}
+
+html,
+body {
+  background-color: #09090f !important;
+}
+
+#pulse-open-btn,
+#pulse-menu,
+#mod-sheet-container .trigger-text {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+aside[data-test-id="NAVBAR"],
+[class*="NavbarDesktop_root__"] {
+  background: #0c0c14 !important;
+}
+
+[data-test-id="PLUS_PAYWALL"],
+[data-test-id="PAYWALL"],
+div[class*="PageHeaderArtist_donateControl__"] {
+  display: none !important;
+}

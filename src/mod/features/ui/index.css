@@ -12,7 +12,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.88 0.17 93.42);
+  --primary: oklch(0.72 0.16 305);
   --primary-foreground: oklch(0.145 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -41,13 +41,13 @@
 
 .dark,
 .ym-dark-theme {
-  --background: oklch(0.16 0 0);
+  --background: oklch(0.16 0.03 305);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.88 0.17 93.42);
+  --primary: oklch(0.72 0.16 305);
   --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
@@ -113,11 +113,10 @@
 }
 
 @layer base {
-  * {
+  #yandex-music-mod-sidebar *,
+  [data-slot="sheet-content"] *,
+  [data-slot="sheet-overlay"] {
     @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
   }
 }
 

@@ -1,20 +1,29 @@
-import { onYandexApiResponse, onYandexApiRequest } from "~/mod/features/utils/utils";
+import { onYandexApiResponse, forcePlus } from "~/mod/features/utils/utils";
 import { getTrackUrl, getTracksInfo, QualityEnum } from "~/mod/features/utils/api";
-import { musixmatchApi } from "@ui/external-apis/musixmatch";
-import { type Lyrics, type Subtitle } from "@ui/external-apis/musixmatch/models";
 import { toast } from "sonner";
 import * as Sentry from "@sentry/react";
 
-// Заменить hasPlus на true, когда яндекс получает информацию о текущем пользователе
-onYandexApiResponse("api.music.yandex.net/account/about", async function (response: any) {
-  const data = response.data;
-  data.hasPlus = true;
-  Sentry.setUser({
-    id: data.uid,
-    username: data.login,
-  });
-  console.log(`[PlusUnlocker] Change hasPlus value:`, data);
+function unlockAccount(data: any) {
+  forcePlus(data);
+  const account = data?.result || data?.data || data;
+  try {
+    Sentry.setUser({
+      id: account?.uid,
+      username: account?.login,
+    });
+  } catch {
+    // ignore
+  }
+  console.log("[PlusUnlocker] hasPlus forced", account?.login || account?.uid);
   return data;
+}
+
+onYandexApiResponse("account/about", async function (response: any) {
+  return unlockAccount(response.data);
+});
+
+onYandexApiResponse("account/status", async function (response: any) {
+  return unlockAccount(response.data);
 });
 
 // Убрать рекламу яндекса в виде контента в подборках

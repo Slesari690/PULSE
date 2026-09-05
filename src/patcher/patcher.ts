@@ -88,9 +88,19 @@ export async function processBuild(build: AppBuild) {
   }
 
   try {
-    fs.mkdirSync(path.join(buildDir, "src", "assets"));
+    fs.mkdirSync(path.join(buildDir, "src", "assets"), { recursive: true });
     fs.copyFileSync(appIconPath, path.join(buildDir, "src", "assets", "icon.ico"));
-    fs.copyFileSync(path.join(__projectRoot, "yaicon.png"), path.join(buildDir, "src", "assets", "icon.png"));
+    const pulsePng = path.join(__projectRoot, "branding", "pulse-icon.png");
+    const pulseIco = path.join(__projectRoot, "branding", "pulse-icon.ico");
+    if (fs.existsSync(pulsePng)) {
+      fs.copyFileSync(pulsePng, path.join(buildDir, "src", "assets", "icon.png"));
+    } else if (fs.existsSync(path.join(__projectRoot, "yaicon.png"))) {
+      fs.copyFileSync(path.join(__projectRoot, "yaicon.png"), path.join(buildDir, "src", "assets", "icon.png"));
+    }
+    if (fs.existsSync(pulseIco)) {
+      fs.copyFileSync(pulseIco, path.join(buildDir, "src", "assets", "icon.ico"));
+      fs.copyFileSync(pulseIco, path.join(buildDir, "icon.ico"));
+    }
     logProgress(`✔️   Extracted app icons`);
   } catch (error) {
     logProgress(`❌ Failed to copy app icons: ${error}`);
@@ -156,11 +166,18 @@ export async function processBuild(build: AppBuild) {
   packageJsonContents.devDependencies = Object.fromEntries(
     Object.entries(packageJsonContents.devDependencies).filter(([key]) => !bannedDependencies.includes(key)),
   );
-  packageJsonContents.name = "YandexMusicMod";
+  packageJsonContents.name = "pulse";
+  packageJsonContents.version = "3.0.0";
+  packageJsonContents.description = "PULSE V3 — кастомный мод Яндекс Музыки";
   packageJsonContents.author = "Slesari690 [github.com/Slesari690]";
   packageJsonContents.build = {
-    appId: "ru.yandex.desktop.music.mod",
-    productName: "Яндекс Музыка",
+    appId: "com.slesari690.pulse",
+    productName: "PULSE",
+    artifactName: "PULSE-V3-Setup-${version}.${ext}",
+    nsis: {
+      shortcutName: "PULSE",
+      uninstallDisplayName: "PULSE V3",
+    },
     win: {
       icon: "assets/icon.ico",
       requestedExecutionLevel: "requireAdministrator",
@@ -178,6 +195,7 @@ export async function processBuild(build: AppBuild) {
         filter: ["**/*"],
       },
     ],
+    files: ["**/*", "!dist/**", "!dist-pulse/**"],
   };
 
   logProgress(`🛠️  Merge dependencies`);
@@ -278,7 +296,7 @@ export async function processBuild(build: AppBuild) {
   if (/const window = new electron.BrowserWindow\({\s+show: false/g.test(indexJsContents)) {
     indexJsContents = indexJsContents.replace(
       /const window = new electron.BrowserWindow\({\s+show: false/g,
-      "const window = new electron.BrowserWindow({\n show: true",
+      "const window = new electron.BrowserWindow({\n title: 'PULSE',\n icon: require('path').join(process.resourcesPath, 'assets', 'icon.ico'),\n show: true",
     );
   } else {
     logProgress(`❌ "const window = new electron.BrowserWindow({ show: false" is not found in index.js`);
@@ -438,6 +456,13 @@ export async function processBuild(build: AppBuild) {
   fs.cpSync(path.join(modCompiledDir), path.join(buildModdedDir, "app", "yandexMusicMod"), {
     recursive: true,
   });
+
+  // pulse-shell.js is injected verbatim by main.js, so it is copied as-is
+  // instead of going through the vite bundle.
+  fs.copyFileSync(
+    path.join(__projectRoot, "src", "mod", "features", "ui", "pulse-shell.js"),
+    path.join(buildModdedDir, "app", "yandexMusicMod", "pulse-shell.js"),
+  );
 
   let modRendererContents = fs.readFileSync(path.join(buildModdedDir, "app", "yandexMusicMod", "renderer.js"), "utf8");
 

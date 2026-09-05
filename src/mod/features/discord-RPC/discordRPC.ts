@@ -53,7 +53,7 @@ window.__getPlayerState = () => {
   };
 };
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key === "discordRPC/enabled" && value !== isRpcEnabled) isRpcEnabled = value;
   if (key === "discordRPC/showModButton" && value !== showModButton) showModButton = value;
 });

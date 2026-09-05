@@ -16,7 +16,7 @@ let deadline: number | null = null; // epoch ms, or -1 for end-of-track
 let pollHandle: ReturnType<typeof setInterval> | null = null;
 let lastTrackId: string | null = null;
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key === "sleep-timer/deadline") {
     deadline = typeof value === "number" ? value : null;
     if (deadline !== null && !pollHandle) startPolling();

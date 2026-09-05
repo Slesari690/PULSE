@@ -26,7 +26,7 @@ let sourceNode: MediaElementAudioSourceNode | null = null;
 let currentAudio: HTMLAudioElement | null = null;
 let pollHandle: ReturnType<typeof setInterval> | null = null;
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key === "audio-visualizer/enabled") {
     enabled = value === true;
     if (enabled) start();

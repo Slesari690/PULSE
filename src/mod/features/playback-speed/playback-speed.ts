@@ -18,7 +18,7 @@ let preserve = true;
 let pollHandle: ReturnType<typeof setInterval> | null = null;
 let lastAudio: HTMLAudioElement | null = null;
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key === "playback-speed/rate") {
     rate = typeof value === "number" ? value : 1.0;
     applyToCurrent();

@@ -88,7 +88,7 @@ async function updateActivity() {
 
     if (playerState.showModButton) {
       rpcRequest.buttons.push({
-        label: "💻 Yandex Music Mod",
+        label: "💻 PULSE",
         url: `https://github.com/Slesari690/YandexMusicBetaMod`,
       });
     }

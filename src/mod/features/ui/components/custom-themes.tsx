@@ -18,7 +18,7 @@ import {
 import { Palette } from "lucide-react";
 
 // Predefined accent colors - simple hex array
-const ACCENT_COLORS = ["#fed42b", "#4A9EFF", "#34c72c", "#e74343", "#b74bd9", "#f161c4"];
+const ACCENT_COLORS = ["#A78BFA", "#22D3EE", "#F472B6", "#4A9EFF", "#34c72c", "#fed42b"];
 
 export const MENU_ITEMS = [
   {
@@ -61,7 +61,7 @@ export function CustomThemes() {
           : true;
       const hiddenMenuItems = await (window as any).yandexMusicMod.getStorageValue("custom-themes/hideMenuItems");
 
-      setCustomColorsEnabled(colorsEnabled || false);
+      setCustomColorsEnabled(colorsEnabled !== false);
       setSelectedAccentColor(accentColor || ACCENT_COLORS[0]!);
       setPlayerColorsReplaceEnabled(playerColorsReplaceEnabled);
       setDisableVibeAnimation(disableVibeAnimation);

@@ -31,7 +31,7 @@ ${savedFont?.extraStylesheet || ""}
   document.head.appendChild(styleSheet);
 }
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key.includes("font-changer")) updateFont();
 });
 

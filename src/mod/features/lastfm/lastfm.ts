@@ -25,7 +25,7 @@ let scrobbledThisTrack = false;
 let pollHandle: ReturnType<typeof setInterval> | null = null;
 let unsubTrack: (() => void) | null = null;
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key === "lastfm/enabled") {
     enabled = value === true;
     if (enabled) start();

@@ -28,6 +28,9 @@ if (!fs.existsSync(settingsFilePath)) {
   // Initialize settings with default download path on first run
   const initialSettings = {
     downloadFolderPath: defaultDownloadPath,
+    "custom-themes/enabled": true,
+    "custom-themes/accent": "#A78BFA",
+    "custom-themes/playerColorsReplace": true,
   };
   fs.writeFileSync(settingsFilePath, JSON.stringify(initialSettings, null, 2));
 } else {
@@ -373,6 +376,49 @@ electron.ipcMain.on("yandexMusicMod.hotkeysState", (_ev, enabled) => {
 
 // Re-register on focus regain (some systems unregister media keys when blurred)
 electron.app.on("browser-window-focus", registerHotkeys);
+
+try {
+  electron.app.on("browser-window-created", (_e, win) => {
+    const inject = () => {
+      try {
+        const rendererPath = path.join(electron.app.getAppPath(), "app", "yandexMusicMod", "renderer.js");
+        const cssPath = path.join(electron.app.getAppPath(), "app", "yandexMusicMod", "renderer.css");
+        if (fs.existsSync(cssPath)) {
+          win.webContents.insertCSS(fs.readFileSync(cssPath, "utf8")).catch(() => {});
+        }
+        const shellPath = path.join(electron.app.getAppPath(), "app", "yandexMusicMod", "pulse-shell.js");
+        if (fs.existsSync(shellPath)) {
+          win.webContents.executeJavaScript(fs.readFileSync(shellPath, "utf8")).catch(() => {});
+        }
+        if (fs.existsSync(rendererPath)) {
+          win.webContents.executeJavaScript(fs.readFileSync(rendererPath, "utf8")).catch(() => {});
+        }
+      } catch (err) {
+        console.error("PULSE renderer inject failed", err);
+      }
+    };
+    win.webContents.on("did-finish-load", inject);
+    win.webContents.on("dom-ready", inject);
+  });
+} catch {}
+
+try {
+  electron.app.setName("PULSE");
+  electron.app.setAppUserModelId("com.slesari690.pulse");
+  const lockPulseTitle = (win) => {
+    try {
+      win.setTitle("PULSE");
+      win.on("page-title-updated", (event) => {
+        event.preventDefault();
+        win.setTitle("PULSE");
+      });
+    } catch {}
+  };
+  electron.app.on("browser-window-created", (_e, win) => lockPulseTitle(win));
+  const applyExisting = () => electron.BrowserWindow.getAllWindows().forEach(lockPulseTitle);
+  if (electron.app.isReady()) applyExisting();
+  else electron.app.whenReady().then(applyExisting);
+} catch {}
 
 // Discord RPC (из-за того, что main.js не бандлится а просто добавляется в оригинальный index.js, все импорты приходится делать вручную. Строчка ниже просто заменится на содержимое файла src\mod\features\utils\discordRPC.js)
 mod_require("discordRPC");

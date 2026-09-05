@@ -16,7 +16,7 @@ const LIKE_BUTTON_SELECTOR = 'button[data-test-id="LIKE_BUTTON"], button[aria-la
 
 let enabled = false;
 
-window.yandexMusicMod.onStorageChanged((key: string, value: any) => {
+window.yandexMusicMod?.onStorageChanged((key: string, value: any) => {
   if (key === "global-hotkeys/enabled") {
     enabled = value !== false;
     window.yandexMusicMod.setHotkeysEnabled(enabled);
