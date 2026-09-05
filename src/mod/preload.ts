@@ -19,6 +19,7 @@ electron.contextBridge.exposeInMainWorld("yandexMusicMod", {
   downloadCover: (coverUri: string, fileName: string) =>
     electron.ipcRenderer.invoke("yandexMusicMod.downloadCover", coverUri, fileName),
   axios: (config: any) => electron.ipcRenderer.invoke("yandexMusicMod.axios", config),
+  fileInfoRequests: () => electron.ipcRenderer.invoke("yandexMusicMod.fileInfoRequests"),
   onMediaKey: (cb: (action: string) => void) => {
     const listener = (_e: unknown, action: string) => cb(action);
     electron.ipcRenderer.on("yandexMusicMod.mediaKey", listener);
@@ -26,6 +27,20 @@ electron.contextBridge.exposeInMainWorld("yandexMusicMod", {
   },
   setHotkeysEnabled: (enabled: boolean) => electron.ipcRenderer.send("yandexMusicMod.hotkeysState", enabled),
 });
+
+// The interceptors in pulse-shell.js have to replace window.fetch before the
+// app's HTTP client captures its own reference to it, which happens while the
+// page's first scripts run. Injecting after did-finish-load is far too late:
+// XMLHttpRequest patches still apply (they live on the prototype), but every
+// fetch-based call — /get-file-info among them — slips past unseen.
+// webFrame.executeJavaScript runs in the page's own world despite context
+// isolation, and preload runs before any page script.
+try {
+  const shellSource = electron.ipcRenderer.sendSync("yandexMusicMod.shellSource");
+  if (shellSource) electron.webFrame.executeJavaScript(shellSource, false);
+} catch (error) {
+  console.error("PULSE early inject failed", error);
+}
 
 // Register Ctrl+Shift+I to open DevTools
 electron.globalShortcut.register("CommandOrControl+Shift+I", () => {

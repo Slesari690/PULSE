@@ -381,7 +381,48 @@ electron.ipcMain.on("yandexMusicMod.hotkeysState", (_ev, enabled) => {
 electron.app.on("browser-window-focus", registerHotkeys);
 
 try {
+  // Independent of any JavaScript hook in the page: Chromium reports every
+  // request the app sends, headers included. That gives the mod the app's own
+  // signed /get-file-info URLs and its exact header set even if the renderer
+  // side interception ever breaks again.
+  const fileInfoRequests = [];
+
+  const rememberFileInfoRequest = (details) => {
+    try {
+      if (!details.url || details.url.indexOf("get-file-info") === -1) return;
+      fileInfoRequests.unshift({ url: details.url, headers: details.requestHeaders || {}, at: Date.now() });
+      if (fileInfoRequests.length > 60) fileInfoRequests.length = 60;
+    } catch {}
+  };
+
+  const watchSession = (session) => {
+    try {
+      session.webRequest.onSendHeaders({ urls: ["*://api.music.yandex.net/*"] }, rememberFileInfoRequest);
+    } catch {}
+  };
+
+  electron.ipcMain.handle("yandexMusicMod.fileInfoRequests", () => fileInfoRequests);
+
+  // Read synchronously so the preload can hand the source to the page before the
+  // app's own scripts start running.
+  electron.ipcMain.on("yandexMusicMod.shellSource", (event) => {
+    try {
+      const shellPath = path.join(electron.app.getAppPath(), "app", "yandexMusicMod", "pulse-shell.js");
+      event.returnValue = fs.existsSync(shellPath) ? fs.readFileSync(shellPath, "utf8") : "";
+    } catch {
+      event.returnValue = "";
+    }
+  });
+
+  if (electron.app.isReady()) watchSession(electron.session.defaultSession);
+  else electron.app.whenReady().then(() => watchSession(electron.session.defaultSession));
+
   electron.app.on("browser-window-created", (_e, win) => {
+    // Yandex may put the window on its own partition, which has its own session.
+    try {
+      watchSession(win.webContents.session);
+    } catch {}
+
     const inject = () => {
       try {
         const rendererPath = path.join(electron.app.getAppPath(), "app", "yandexMusicMod", "renderer.js");

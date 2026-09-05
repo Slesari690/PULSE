@@ -295,21 +295,23 @@
 
   // Yandex keeps animating the Vibe background and the player chrome even when
   // the window is behind a game, which costs real GPU time.
-  try {
-    var idleStyle = document.createElement("style");
-    idleStyle.textContent =
-      "html.pulse-idle *,html.pulse-idle *::before,html.pulse-idle *::after" +
-      "{animation-play-state:paused!important;transition:none!important}" +
-      "html.pulse-idle canvas,html.pulse-idle video{display:none!important}";
-    (document.head || document.documentElement).appendChild(idleStyle);
+  function initIdleSaver() {
+    try {
+      var idleStyle = document.createElement("style");
+      idleStyle.textContent =
+        "html.pulse-idle *,html.pulse-idle *::before,html.pulse-idle *::after" +
+        "{animation-play-state:paused!important;transition:none!important}" +
+        "html.pulse-idle canvas,html.pulse-idle video{display:none!important}";
+      (document.head || document.documentElement).appendChild(idleStyle);
 
-    var syncIdle = function () {
-      document.documentElement.classList.toggle("pulse-idle", !document.hasFocus());
-    };
-    window.addEventListener("blur", syncIdle);
-    window.addEventListener("focus", syncIdle);
-    syncIdle();
-  } catch (e) {}
+      var syncIdle = function () {
+        document.documentElement.classList.toggle("pulse-idle", !document.hasFocus());
+      };
+      window.addEventListener("blur", syncIdle);
+      window.addEventListener("focus", syncIdle);
+      syncIdle();
+    } catch (e) {}
+  }
 
   /* ---------- Слепок собственных запросов приложения ---------- */
 
@@ -546,9 +548,10 @@
       });
     }
 
+    // A token lifted from a real request beats one dug out of localStorage.
     var token = oauthToken();
     if (skipAuth) delete headers.authorization;
-    else if (token) headers.authorization = token;
+    else if (!headers.authorization && token) headers.authorization = token;
 
     return headers;
   }
@@ -655,6 +658,42 @@
     return null;
   }
 
+  // Chromium hands the main process the exact URL and headers of every request
+  // the app makes. A /get-file-info URL already carries a signature Yandex
+  // accepts, and signatures stay valid for a while, so re-sending one is the
+  // most dependable way to get a link.
+  var replayCache = {};
+
+  async function replayAppFileInfo(trackId) {
+    var mod = window.yandexMusicMod;
+    if (!mod || !mod.fileInfoRequests) return null;
+
+    var requests;
+    try {
+      requests = await mod.fileInfoRequests();
+    } catch (e) {
+      return null;
+    }
+    if (!Array.isArray(requests)) return null;
+
+    for (var i = 0; i < requests.length; i++) {
+      var request = requests[i];
+      if (!request || !request.url || replayCache[request.url]) continue;
+      if (request.url.indexOf(encodeURIComponent(trackId)) === -1 && request.url.indexOf(trackId) === -1) continue;
+
+      replayCache[request.url] = true;
+      rememberApiHeaders(request.headers);
+
+      var res = await xhrJson(request.url, apiHeaders());
+      lastApiStatus = res.status;
+      if (res.status !== 200) continue;
+
+      rememberFileInfoResponse(res.data);
+      if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
+    }
+    return null;
+  }
+
   async function getDownloadInfo(trackId, quality, waitForApp) {
     trackId = String(trackId);
     if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
@@ -684,11 +723,21 @@
       }
     }
 
+    // Replay the app's own signed request, captured by the main process at the
+    // network level. Its signature is already accepted by Yandex, so this works
+    // even when the mod cannot produce a valid one itself.
+    var replayed = await replayAppFileInfo(trackId);
+    if (replayed) return replayed;
+
     // Last resort for a single track: the app fetches the link itself while the
     // track plays, so give it a few seconds to do the work for us.
     if (waitForApp) {
       for (var wait = 0; wait < 24; wait++) {
         if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
+        if (wait === 8 || wait === 16) {
+          var late = await replayAppFileInfo(trackId);
+          if (late) return late;
+        }
         await sleep(250);
       }
     }
@@ -1045,14 +1094,23 @@
       "ссылок в памяти: " + cached,
       lastApiStatus === null ? "запросов не было" : "последний ответ API: " + lastApiStatus,
     ];
-    header.appendChild(
-      el(
-        "div",
-        "margin-top:6px;font:400 12px/1.4 Segoe UI,Arial,sans-serif;color:#9a97b8",
-        diagnostics.join(" · "),
-      ),
+    var diagnosticsLine = el(
+      "div",
+      "margin-top:6px;font:400 12px/1.4 Segoe UI,Arial,sans-serif;color:#9a97b8",
+      diagnostics.join(" · "),
     );
+    header.appendChild(diagnosticsLine);
     panel.appendChild(header);
+
+    if (window.yandexMusicMod && window.yandexMusicMod.fileInfoRequests) {
+      window.yandexMusicMod
+        .fileInfoRequests()
+        .then(function (requests) {
+          var count = Array.isArray(requests) ? requests.length : 0;
+          diagnosticsLine.textContent = diagnostics.concat("запросов клиента видно: " + count).join(" · ");
+        })
+        .catch(function () {});
+    }
 
     var body = el("div", "flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:10px");
     panel.appendChild(body);
@@ -1279,7 +1337,15 @@
     if (!document.getElementById("pulse-theme")) applyTheme(activeTheme.id);
   }
 
-  initTheme();
-  ensureButton();
-  setInterval(ensureButton, 1500);
+  // The network hooks above have to be in place before the app builds its HTTP
+  // client, so this file runs from the preload — long before there is a DOM.
+  function startUi() {
+    initIdleSaver();
+    initTheme();
+    ensureButton();
+    setInterval(ensureButton, 1500);
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startUi);
+  else startUi();
 })();
