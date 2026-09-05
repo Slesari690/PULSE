@@ -511,6 +511,27 @@
   /* ---------- Работа с API Яндекса ---------- */
 
   var lastApiStatus = null;
+  var lastApiDetail = "";
+
+  // The refusal reason hides in a different field depending on the endpoint.
+  function describeApiError(res) {
+    var data = res && res.data;
+    var node = (data && (data.error || data.invocationInfo || data.result)) || data;
+
+    if (node && typeof node === "object") {
+      var parts = [];
+      ["name", "message", "reason", "detail", "description"].forEach(function (field) {
+        if (typeof node[field] === "string" && node[field] && parts.indexOf(node[field]) === -1) {
+          parts.push(node[field]);
+        }
+      });
+      if (parts.length) return parts.join(": ");
+    }
+    if (typeof node === "string" && node) return node;
+
+    var text = String((res && res.text) || "").trim();
+    return text ? text.slice(0, 200) : "";
+  }
 
   function oauthToken() {
     try {
@@ -569,13 +590,17 @@
       });
       xhr.onload = function () {
         var data = null;
+        var text = "";
         try {
-          data = JSON.parse(xhr.responseText);
+          text = xhr.responseText || "";
         } catch (e) {}
-        resolve({ status: xhr.status, data: data });
+        try {
+          data = JSON.parse(text);
+        } catch (e) {}
+        resolve({ status: xhr.status, data: data, text: text });
       };
       xhr.onerror = function () {
-        resolve({ status: 0, data: null });
+        resolve({ status: 0, data: null, text: "" });
       };
       xhr.send();
     });
@@ -599,8 +624,13 @@
 
     lastApiStatus = res.status;
     if (res.status !== 200) {
-      var error = new Error("HTTP " + res.status);
+      // Yandex says why it refused in the body; throwing only the status code
+      // away made every failure look identical.
+      var detail = describeApiError(res);
+      lastApiDetail = detail;
+      var error = new Error("HTTP " + res.status + (detail ? " — " + detail : ""));
       error.status = res.status;
+      error.detail = detail;
       throw error;
     }
     return forcePlus(res.data);
@@ -705,6 +735,7 @@
     );
 
     var lastStatus = 0;
+    var lastDetail = "";
     for (var s = 0; s < secrets.length; s++) {
       for (var q = 0; q < qualities.length; q++) {
         for (var t = 0; t < TRANSPORTS.length; t++) {
@@ -715,6 +746,7 @@
               if (info) return info;
             } catch (e) {
               lastStatus = e.status || 0;
+              lastDetail = e.detail || "";
               // Anything other than a refusal means retrying is pointless.
               if (lastStatus !== 451 && lastStatus !== 403 && lastStatus !== 404) throw e;
             }
@@ -744,6 +776,8 @@
 
     var refused = new Error("HTTP " + lastStatus);
     refused.status = lastStatus;
+    refused.detail = lastDetail;
+    refused.trackId = trackId;
     throw refused;
   }
 
@@ -836,7 +870,15 @@
           "). PULSE ещё не подсмотрел заголовки клиента: включи любой трек, дай ему проиграть пару секунд и повтори."
         );
       }
-      return "Яндекс отказал (" + status + ") по всем качествам и форматам. Похоже, трек недоступен именно этому аккаунту.";
+      return (
+        "Яндекс отказал (" +
+        status +
+        ") по всем качествам и форматам" +
+        (error.trackId ? ", трек " + error.trackId : "") +
+        ". Ответ сервера: " +
+        (error.detail || "пустой") +
+        ". Нажми «Диагностика» и пришли отчёт."
+      );
     }
     if (status === 404) return "Трек недоступен для скачивания.";
     if (status === 0) return "Нет связи с api.music.yandex.net.";
@@ -925,6 +967,107 @@
     var ids = await collectPageTrackIds(page);
     if (!ids.length) return setStatus("В этом разделе не нашлось треков.");
     await downloadByIds(ids);
+  }
+
+  // Walks the whole download chain and writes down what each step answered, so
+  // a failure can be read instead of guessed at.
+  async function buildReport() {
+    var lines = [];
+    var add = function (label, value) {
+      lines.push(label + ": " + value);
+    };
+
+    add("версия мода", "3.1.2");
+    add("версия клиента", window.VERSION || "неизвестна");
+    add("страница", window.location.pathname + window.location.search);
+    add("токен", oauthToken() ? "есть" : "нет");
+    add("ключей подписи", secrets.length + (secrets.length > 1 ? " (перехвачен)" : " (только встроенный)"));
+    add("заголовки клиента", apiHeaderTemplate ? Object.keys(apiHeaderTemplate).sort().join(", ") : "не перехвачены");
+
+    var cachedIds = Object.keys(fileInfoByTrack);
+    add("ссылок в памяти", cachedIds.length + (cachedIds.length ? " [" + cachedIds.slice(0, 10).join(", ") + "]" : ""));
+
+    var scraped = findCurrentTrackId();
+    add("трек со страницы", scraped || "не найден");
+    add("трек из последней ссылки", lastFileInfo ? lastFileInfo.trackId : "нет");
+    add("выбран трек", resolveCurrentTrackId() || "нет");
+
+    var requests = [];
+    try {
+      if (window.yandexMusicMod && window.yandexMusicMod.fileInfoRequests) {
+        requests = (await window.yandexMusicMod.fileInfoRequests()) || [];
+      }
+    } catch (e) {}
+    add("запросов клиента видно", requests.length);
+    if (requests.length) {
+      add("последний запрос клиента", String(requests[0].url).slice(0, 220));
+      add("его заголовки", Object.keys(requests[0].headers || {}).sort().join(", "));
+    }
+
+    // One live probe per quality so the report carries real server answers.
+    var probeId = resolveCurrentTrackId();
+    if (probeId) {
+      for (var q = 0; q < QUALITIES.length; q++) {
+        try {
+          var info = await requestDownloadInfo(probeId, QUALITIES[q], "raw", secrets[0], false);
+          add("проба " + QUALITIES[q], info ? "ссылка получена" : "200, но без ссылки");
+        } catch (e) {
+          add("проба " + QUALITIES[q], "HTTP " + (e.status || 0) + " — " + (e.detail || "тело пустое"));
+        }
+      }
+    }
+
+    // Deliberately routed through the main process: in the renderer both
+    // JSON.parse and apiGet already force hasPlus to true, so the real answer
+    // is only visible from outside the page.
+    try {
+      var raw = await window.yandexMusicMod.axios({
+        url: API + "/account/status",
+        method: "GET",
+        headers: apiHeaders(),
+      });
+      var account = (raw && raw.data && (raw.data.result || raw.data)) || {};
+      add(
+        "подписка по данным сервера",
+        (account.plus && account.plus.hasPlus ? "есть" : "нет") +
+          (account.subscription && account.subscription.autoRenewable && account.subscription.autoRenewable.length
+            ? ", автопродление"
+            : ""),
+      );
+    } catch (e) {
+      add("подписка по данным сервера", "не удалось: " + e.message);
+    }
+
+    add("последний ответ API", lastApiStatus === null ? "запросов не было" : lastApiStatus + " " + lastApiDetail);
+
+    return lines.join("\n");
+  }
+
+  async function showReport() {
+    setStatus("Собираю отчёт, это займёт несколько секунд…");
+    var report = await buildReport();
+    try {
+      await navigator.clipboard.writeText(report);
+      setStatus("Отчёт скопирован в буфер обмена — вставь его в переписку.");
+    } catch (e) {
+      setStatus("Скопируй отчёт из окна ниже.");
+    }
+
+    var box = document.createElement("textarea");
+    box.value = report;
+    box.setAttribute(
+      "style",
+      "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:min(680px,92vw);" +
+        "height:min(420px,70vh);padding:14px;border-radius:14px;border:1px solid rgba(167,139,250,.35);" +
+        "background:#0b0b12;color:#e8e6f5;font:400 12px/1.5 Consolas,monospace;resize:none",
+    );
+    box.readOnly = true;
+    box.onblur = function () {
+      box.remove();
+    };
+    document.documentElement.appendChild(box);
+    box.focus();
+    box.select();
   }
 
   function guard(fn) {
@@ -1171,6 +1314,10 @@
       setStatus("Открываю папку загрузок…");
     };
     body.appendChild(openBtn);
+
+    var reportBtn = button("Диагностика");
+    reportBtn.onclick = guard(showReport);
+    body.appendChild(reportBtn);
 
     body.appendChild(sectionTitle("ТЕМА ПЛЕЕРА"));
     body.appendChild(
