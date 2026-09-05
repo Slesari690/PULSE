@@ -167,7 +167,7 @@ export async function processBuild(build: AppBuild) {
     Object.entries(packageJsonContents.devDependencies).filter(([key]) => !bannedDependencies.includes(key)),
   );
   packageJsonContents.name = "pulse";
-  packageJsonContents.version = "3.0.1";
+  packageJsonContents.version = "3.0.2";
   packageJsonContents.description = "PULSE V3 вЂ” РєР°СЃС‚РѕРјРЅС‹Р№ РјРѕРґ РЇРЅРґРµРєСЃ РњСѓР·С‹РєРё";
   packageJsonContents.author = "Slesari690 [github.com/Slesari690]";
   packageJsonContents.build = {

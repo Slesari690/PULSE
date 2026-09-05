@@ -405,6 +405,16 @@ try {
   });
 } catch {}
 
+// Let Chromium throttle the window while it sits behind a game. Pages that play
+// audio keep their audio pipeline, only rendering and timers are slowed down.
+try {
+  electron.app.on("browser-window-created", (_e, win) => {
+    try {
+      win.webContents.setBackgroundThrottling(true);
+    } catch {}
+  });
+} catch {}
+
 try {
   electron.app.setName("PULSE");
   electron.app.setAppUserModelId("com.slesari690.pulse");

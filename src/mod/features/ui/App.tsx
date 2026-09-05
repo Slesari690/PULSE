@@ -112,9 +112,20 @@ export default function App() {
     };
 
     checkAndPlaceButton();
-    const observer = new MutationObserver(checkAndPlaceButton);
+
+    // The player mutates its DOM several times per second, so this must not run
+    // per mutation — it only needs to catch navigation between pages.
+    let scheduled = 0;
+    const observer = new MutationObserver(() => {
+      if (scheduled) return;
+      scheduled = window.setTimeout(() => {
+        scheduled = 0;
+        checkAndPlaceButton();
+      }, 500);
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true });
     return () => {
+      window.clearTimeout(scheduled);
       observer.disconnect();
     };
   }, []);

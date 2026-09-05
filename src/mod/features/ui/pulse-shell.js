@@ -102,6 +102,26 @@
     };
   } catch (e) {}
 
+  /* ---------- Экономия ресурсов, пока окно не в фокусе ---------- */
+
+  // Yandex keeps animating the Vibe background and the player chrome even when
+  // the window is behind a game, which costs real GPU time.
+  try {
+    var idleStyle = document.createElement("style");
+    idleStyle.textContent =
+      "html.pulse-idle *,html.pulse-idle *::before,html.pulse-idle *::after" +
+      "{animation-play-state:paused!important;transition:none!important}" +
+      "html.pulse-idle canvas,html.pulse-idle video{display:none!important}";
+    (document.head || document.documentElement).appendChild(idleStyle);
+
+    var syncIdle = function () {
+      document.documentElement.classList.toggle("pulse-idle", !document.hasFocus());
+    };
+    window.addEventListener("blur", syncIdle);
+    window.addEventListener("focus", syncIdle);
+    syncIdle();
+  } catch (e) {}
+
   /* ---------- Слепок собственных запросов приложения ---------- */
 
   // Yandex signs /get-file-info with a secret that changes between app releases.
@@ -130,6 +150,7 @@
   // instead of trying to reproduce the request.
   var fileInfoTemplate = null;
   var fileInfoByTrack = {};
+  var lastFileInfo = null;
 
   function isFileInfoUrl(url) {
     return String(url || "").indexOf("get-file-info") !== -1;
@@ -148,7 +169,9 @@
 
   function rememberResponse(data) {
     var info = data && data.downloadInfo;
-    if (info && info.trackId && info.url) fileInfoByTrack[String(info.trackId)] = info;
+    if (!info || !info.trackId || !info.url) return;
+    fileInfoByTrack[String(info.trackId)] = info;
+    lastFileInfo = info;
   }
 
   try {
@@ -544,9 +567,19 @@
     );
   }
 
+  // On "Моя волна" and other radio pages the player markup differs, so the id
+  // scraped from React can be missing or stale. The link the app itself fetched
+  // last is a more reliable source than the DOM.
+  function resolveCurrentTrackId() {
+    var scraped = findCurrentTrackId();
+    if (scraped && fileInfoByTrack[scraped]) return scraped;
+    if (lastFileInfo && lastFileInfo.trackId) return String(lastFileInfo.trackId);
+    return scraped;
+  }
+
   async function downloadCurrentTrack() {
     if (!window.yandexMusicMod) return setStatus("API мода недоступен. Перезапусти PULSE.");
-    var trackId = findCurrentTrackId();
+    var trackId = resolveCurrentTrackId();
     if (!trackId) return setStatus("Трек не найден. Включи воспроизведение и нажми ещё раз.");
     await downloadByIds([trackId]);
   }
