@@ -1141,7 +1141,7 @@
       lines.push(label + ": " + value);
     };
 
-    add("версия мода", "3.1.8");
+    add("версия мода", "3.1.9");
     add("версия клиента", window.VERSION || "неизвестна");
     add("страница", window.location.pathname + window.location.search);
     add("токен", oauthToken() ? "есть" : "нет");
@@ -1756,8 +1756,43 @@
     return raw.indexOf("http") === 0 ? raw : "https://" + raw;
   }
 
+  function activeMediaElement() {
+    var nodes = document.querySelectorAll("audio,video");
+    var live = null;
+    var clock = null;
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el && !el.paused && !el.ended) {
+        live = el;
+        break;
+      }
+    }
+    for (var j = 0; j < nodes.length; j++) {
+      var node = nodes[j];
+      if (node && isFinite(node.duration) && node.duration > 0) {
+        if (!clock || (node.currentTime || 0) > (clock.currentTime || 0)) clock = node;
+      }
+    }
+    return live || clock || null;
+  }
+
+  function isMediaPlaying(audio) {
+    var sessionState = "";
+    try {
+      sessionState = (navigator.mediaSession && navigator.mediaSession.playbackState) || "";
+    } catch (e) {}
+    if (sessionState === "playing") return true;
+    if (audio && !audio.paused && !audio.ended) return true;
+    if (sessionState === "paused") return false;
+    try {
+      return !!(navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.title);
+    } catch (e) {
+      return false;
+    }
+  }
+
   function pulseGetPlayerState() {
-    var audio = document.querySelector("audio");
+    var audio = activeMediaElement();
     var media = null;
     try {
       media = navigator.mediaSession && navigator.mediaSession.metadata;
@@ -1815,7 +1850,7 @@
           position: position,
           progress: duration ? position / duration : 0,
         },
-        isPlaying: audio ? !audio.paused : !!(rendered && rendered.data && rendered.data.isPlaying),
+        isPlaying: isMediaPlaying(audio),
       },
     };
   }

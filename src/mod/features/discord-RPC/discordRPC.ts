@@ -23,7 +23,14 @@ window.__getPlayerState = () => {
   }
 
   const meta = trackMetaRequest.value;
-  const audio = document.querySelector("audio");
+  const nodes = Array.from(document.querySelectorAll("audio,video"));
+  const live = nodes.find((el) => el && !el.paused && !el.ended) || null;
+  const audio =
+    live ||
+    nodes
+      .filter((el) => el && Number.isFinite(el.duration) && el.duration > 0)
+      .sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0))[0] ||
+    null;
   let playback = playbackRequest.isOk()
     ? playbackRequest.value
     : { duration: 0, progress: 0, position: 0 };
@@ -55,13 +62,26 @@ window.__getPlayerState = () => {
     }
   }
 
+  const sessionState = (() => {
+    try {
+      return navigator.mediaSession?.playbackState || "";
+    } catch {
+      return "";
+    }
+  })();
+  const playing =
+    sessionState === "playing" ||
+    !!live ||
+    (sessionState !== "paused" && !!navigator.mediaSession?.metadata?.title) ||
+    (isPlayingRequest.isOk() ? isPlayingRequest.value : false);
+
   return {
     enabled: isRpcEnabled,
     showModButton: showModButton,
     data: {
       trackMeta: meta,
       playback,
-      isPlaying: audio ? !audio.paused : isPlayingRequest.isOk() ? isPlayingRequest.value : false,
+      isPlaying: playing,
     },
   };
 };

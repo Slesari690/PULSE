@@ -108,9 +108,30 @@ async function GetAppPlayerState() {
           return raw.indexOf("http") === 0 ? raw : "https://" + raw;
         }
 
-        var audio = document.querySelector("audio");
+        function activeMedia() {
+          var nodes = Array.prototype.slice.call(document.querySelectorAll("audio,video"));
+          var live = null;
+          var clock = null;
+          for (var i = 0; i < nodes.length; i++) {
+            var el = nodes[i];
+            if (el && !el.paused && !el.ended) { live = el; break; }
+          }
+          for (var j = 0; j < nodes.length; j++) {
+            var node = nodes[j];
+            if (node && isFinite(node.duration) && node.duration > 0) {
+              if (!clock || (node.currentTime || 0) > (clock.currentTime || 0)) clock = node;
+            }
+          }
+          return live || clock || null;
+        }
+
+        var audio = activeMedia();
         var media = null;
-        try { media = navigator.mediaSession && navigator.mediaSession.metadata; } catch (e) {}
+        var sessionState = "";
+        try {
+          media = navigator.mediaSession && navigator.mediaSession.metadata;
+          sessionState = (navigator.mediaSession && navigator.mediaSession.playbackState) || "";
+        } catch (e) {}
 
         var fromFn = null;
         try {
@@ -139,6 +160,10 @@ async function GetAppPlayerState() {
           duration = meta.durationMs / 1000;
         }
 
+        var live = audio && !audio.paused && !audio.ended;
+        var playing = sessionState === "playing" || !!live;
+        if (!playing && sessionState !== "paused" && media && media.title) playing = true;
+
         return {
           enabled: fromFn && fromFn.enabled === false ? false : true,
           showModButton: true,
@@ -156,7 +181,7 @@ async function GetAppPlayerState() {
               position: position,
               progress: duration ? position / duration : 0
             },
-            isPlaying: audio ? !audio.paused : !!(fromFn && fromFn.data && fromFn.data.isPlaying)
+            isPlaying: playing
           }
         };
       })()
