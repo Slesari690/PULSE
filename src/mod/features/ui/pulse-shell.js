@@ -16,6 +16,52 @@
 
   /* ---------- Плюс: правим ответы Яндекса до того, как их увидит приложение ---------- */
 
+  var PERMISSIONS = [
+    "landing-play",
+    "feed-play",
+    "mix-play",
+    "full-track-play",
+    "high-quality",
+    "lossless-quality",
+    "no-ads",
+    "offline",
+    "artist-play",
+    "album-play",
+    "playlist-play",
+    "search-play",
+    "custom-lyrics",
+  ];
+
+  // Everything the app checks before deciding the user is a paying one.
+  function unlockNode(node) {
+    if ("hasPlus" in node || ("uid" in node && ("login" in node || "avatarId" in node))) node.hasPlus = true;
+    if ("isPaywallBlocking" in node) node.isPaywallBlocking = false;
+    if ("availableForPremiumUsers" in node) node.availableForPremiumUsers = true;
+    if ("availableFullWithoutPermission" in node) node.availableFullWithoutPermission = true;
+    if ("canPlay" in node) node.canPlay = true;
+    if ("advertisement" in node) node.advertisement = null;
+    if ("isAd" in node) node.isAd = false;
+    if ("adsDisabled" in node) node.adsDisabled = true;
+
+    if (node.plus && typeof node.plus === "object") node.plus.hasPlus = true;
+
+    if (node.subscription && typeof node.subscription === "object") {
+      node.subscription.canStartTrial = false;
+      if (!node.subscription.autoRenewable || !node.subscription.autoRenewable.length) {
+        node.subscription.nonAutoRenewableRemainder = { days: 3650 };
+      }
+    }
+
+    if (node.permissions && typeof node.permissions === "object") {
+      ["values", "default"].forEach(function (field) {
+        if (!Array.isArray(node.permissions[field])) return;
+        PERMISSIONS.forEach(function (permission) {
+          if (node.permissions[field].indexOf(permission) === -1) node.permissions[field].push(permission);
+        });
+      });
+    }
+  }
+
   function forcePlus(data, depth) {
     depth = depth || 0;
     if (!data || typeof data !== "object" || depth > 8) return data;
@@ -25,8 +71,7 @@
       return data;
     }
     try {
-      if ("hasPlus" in data || ("uid" in data && ("login" in data || "avatarId" in data))) data.hasPlus = true;
-      if ("isPaywallBlocking" in data) data.isPaywallBlocking = false;
+      unlockNode(data);
     } catch (e) {}
     if (data.result) forcePlus(data.result, depth + 1);
     if (data.data) forcePlus(data.data, depth + 1);
@@ -42,6 +87,154 @@
         forcePlus(parsed);
       } catch (e) {}
       return parsed;
+    };
+  } catch (e) {}
+
+  // fetch() never goes through JSON.parse, so the body has to be patched too.
+  try {
+    var nativeResponseJson = Response.prototype.json;
+    Response.prototype.json = async function () {
+      var data = await nativeResponseJson.call(this);
+      try {
+        forcePlus(data);
+      } catch (e) {}
+      return data;
+    };
+  } catch (e) {}
+
+  /* ---------- Слепок собственных запросов приложения ---------- */
+
+  // Yandex signs /get-file-info with a secret that changes between app releases.
+  // Instead of hardcoding it, grab whatever key the app itself imports.
+  var secrets = [SECRET_KEY];
+
+  function rememberSecret(keyData) {
+    try {
+      var view = keyData instanceof ArrayBuffer ? new Uint8Array(keyData) : new Uint8Array(keyData.buffer || keyData);
+      var text = new TextDecoder().decode(view);
+      if (!/^[\x21-\x7e]{16,64}$/.test(text)) return;
+      if (secrets.indexOf(text) === -1) secrets.unshift(text);
+    } catch (e) {}
+  }
+
+  try {
+    var nativeImportKey = crypto.subtle.importKey.bind(crypto.subtle);
+    crypto.subtle.importKey = function (format, keyData, algorithm) {
+      var name = (algorithm && (algorithm.name || algorithm)) || "";
+      if (format === "raw" && String(name).toUpperCase() === "HMAC") rememberSecret(keyData);
+      return nativeImportKey.apply(null, arguments);
+    };
+  } catch (e) {}
+
+  // The app asks for a download link of every track it plays. Reuse that answer
+  // instead of trying to reproduce the request.
+  var fileInfoTemplate = null;
+  var fileInfoByTrack = {};
+
+  function isFileInfoUrl(url) {
+    return String(url || "").indexOf("get-file-info") !== -1;
+  }
+
+  function rememberRequest(url, headers) {
+    try {
+      var query = new URLSearchParams(String(url).split("?")[1] || "");
+      fileInfoTemplate = {
+        codecs: query.get("codecs"),
+        transports: query.get("transports"),
+        headers: headers || {},
+      };
+    } catch (e) {}
+  }
+
+  function rememberResponse(data) {
+    var info = data && data.downloadInfo;
+    if (info && info.trackId && info.url) fileInfoByTrack[String(info.trackId)] = info;
+  }
+
+  try {
+    var nativeOpen = XMLHttpRequest.prototype.open;
+    var nativeSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+    var nativeSend = XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this.__pulseUrl = String(url || "");
+      this.__pulseHeaders = {};
+      return nativeOpen.apply(this, arguments);
+    };
+
+    XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+      try {
+        if (!this.__pulseHeaders) this.__pulseHeaders = {};
+        this.__pulseHeaders[name] = value;
+      } catch (e) {}
+      return nativeSetHeader.apply(this, arguments);
+    };
+
+    XMLHttpRequest.prototype.send = function () {
+      var self = this;
+      if (isFileInfoUrl(this.__pulseUrl)) {
+        rememberRequest(this.__pulseUrl, this.__pulseHeaders);
+        this.addEventListener("load", function () {
+          try {
+            rememberResponse(JSON.parse(self.responseText));
+          } catch (e) {}
+        });
+      }
+
+      if (String(this.__pulseUrl).indexOf("api.music.yandex.net") !== -1) {
+        this.addEventListener("readystatechange", function () {
+          if (self.readyState !== 4) return;
+          if (self.responseType !== "" && self.responseType !== "text") return;
+          try {
+            var patched = JSON.stringify(forcePlus(JSON.parse(self.responseText)));
+            Object.defineProperty(self, "responseText", {
+              configurable: true,
+              get: function () {
+                return patched;
+              },
+            });
+            Object.defineProperty(self, "response", {
+              configurable: true,
+              get: function () {
+                return patched;
+              },
+            });
+          } catch (e) {}
+        });
+      }
+
+      return nativeSend.apply(this, arguments);
+    };
+  } catch (e) {}
+
+  try {
+    var nativeFetch = window.fetch;
+    window.fetch = function (input, init) {
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      var promise = nativeFetch.apply(this, arguments);
+      if (isFileInfoUrl(url)) {
+        var headers = {};
+        try {
+          var source = (init && init.headers) || (input && input.headers);
+          if (source && typeof source.forEach === "function") {
+            source.forEach(function (value, name) {
+              headers[name] = value;
+            });
+          } else if (source) {
+            Object.keys(source).forEach(function (name) {
+              headers[name] = source[name];
+            });
+          }
+        } catch (e) {}
+        rememberRequest(url, headers);
+        promise
+          .then(function (response) {
+            return response.clone().json();
+          })
+          .then(rememberResponse)
+          .catch(function () {});
+      }
+      return promise;
     };
   } catch (e) {}
 
@@ -83,6 +276,7 @@
     return new Promise(function (resolve) {
       var xhr = new XMLHttpRequest();
       xhr.open("GET", url, true);
+      xhr.withCredentials = true;
       Object.keys(headers).forEach(function (name) {
         if (headers[name]) xhr.setRequestHeader(name, headers[name]);
       });
@@ -100,8 +294,13 @@
     });
   }
 
-  async function apiGet(path, skipAuth) {
+  async function apiGet(path, skipAuth, extraHeaders) {
     var headers = apiHeaders(skipAuth);
+    if (extraHeaders) {
+      Object.keys(extraHeaders).forEach(function (name) {
+        if (extraHeaders[name]) headers[name] = extraHeaders[name];
+      });
+    }
     var res = await xhrJson(API + path, headers);
 
     // Fall back to the main process only for transport errors — a real HTTP
@@ -119,9 +318,9 @@
     return forcePlus(res.data);
   }
 
-  async function hmacSign(data) {
+  async function hmacSign(secret, data) {
     var enc = new TextEncoder();
-    var key = await crypto.subtle.importKey("raw", enc.encode(SECRET_KEY), { name: "HMAC", hash: "SHA-256" }, false, [
+    var key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
       "sign",
     ]);
     var sig = await crypto.subtle.sign("HMAC", key, enc.encode(data));
@@ -131,9 +330,12 @@
   var CODECS = ["flac", "aac", "he-aac", "mp3", "flac-mp4", "aac-mp4", "he-aac-mp4"];
   var TRANSPORTS = "encraw";
 
-  async function requestDownloadInfo(trackId, quality) {
+  async function requestDownloadInfo(trackId, quality, secret) {
+    var codecs = (fileInfoTemplate && fileInfoTemplate.codecs) || CODECS.join(",");
+    var transports = (fileInfoTemplate && fileInfoTemplate.transports) || TRANSPORTS;
+    var headers = fileInfoTemplate && fileInfoTemplate.headers;
     var ts = Math.floor(Date.now() / 1000);
-    var sign = await hmacSign(ts + trackId + quality + CODECS.join("") + TRANSPORTS);
+    var sign = await hmacSign(secret, ts + trackId + quality + codecs.split(",").join("") + transports);
     var path =
       "/get-file-info?ts=" +
       ts +
@@ -142,15 +344,15 @@
       "&quality=" +
       encodeURIComponent(quality) +
       "&codecs=" +
-      encodeURIComponent(CODECS.join(",")) +
+      encodeURIComponent(codecs) +
       "&transports=" +
-      TRANSPORTS +
+      encodeURIComponent(transports) +
       "&sign=" +
       encodeURIComponent(sign);
 
     // Yandex sometimes answers with a different track for a moment after a skip.
-    for (var attempt = 0; attempt < 8; attempt++) {
-      var data = await apiGet(path);
+    for (var attempt = 0; attempt < 6; attempt++) {
+      var data = await apiGet(path, false, headers);
       var info = data && data.downloadInfo;
       if (info && String(info.trackId) === String(trackId)) return info;
       await sleep(200);
@@ -158,21 +360,35 @@
     return null;
   }
 
-  // 451 means Yandex refused this quality for the account, so step down.
-  async function getDownloadInfo(trackId, quality) {
-    var ladder = [quality];
+  async function getDownloadInfo(trackId, quality, waitForApp) {
+    trackId = String(trackId);
+    if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
+
+    var qualities = [quality];
     ["lossless", "nq", "lq"].forEach(function (q) {
-      if (ladder.indexOf(q) === -1) ladder.push(q);
+      if (qualities.indexOf(q) === -1) qualities.push(q);
     });
 
     var lastStatus = 0;
-    for (var i = 0; i < ladder.length; i++) {
-      try {
-        var info = await requestDownloadInfo(trackId, ladder[i]);
-        if (info) return info;
-      } catch (e) {
-        lastStatus = e.status || 0;
-        if (lastStatus !== 451 && lastStatus !== 403 && lastStatus !== 404) throw e;
+    for (var s = 0; s < secrets.length; s++) {
+      for (var q = 0; q < qualities.length; q++) {
+        try {
+          var info = await requestDownloadInfo(trackId, qualities[q], secrets[s]);
+          if (info) return info;
+        } catch (e) {
+          lastStatus = e.status || 0;
+          if (lastStatus !== 451 && lastStatus !== 403 && lastStatus !== 404) throw e;
+        }
+        if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
+      }
+    }
+
+    // Last resort for a single track: the app fetches the link itself while the
+    // track plays, so give it a few seconds to do the work for us.
+    if (waitForApp) {
+      for (var wait = 0; wait < 20; wait++) {
+        if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
+        await sleep(250);
       }
     }
 
@@ -263,7 +479,7 @@
     var status = error && error.status;
     if (status === 451 || status === 403) {
       return oauthToken()
-        ? "Яндекс отказал в выдаче файла (" + status + "). Перезайди в аккаунт в PULSE и попробуй ещё раз."
+        ? "Яндекс не отдал ссылку (" + status + "). Включи трек в плеере, дай ему проиграть пару секунд и нажми снова — PULSE возьмёт ссылку из самого приложения."
         : "Нет авторизации: PULSE не видит твой аккаунт. Войди в Яндекс Музыку внутри PULSE и повтори.";
     }
     if (status === 404) return "Трек недоступен для скачивания.";
@@ -277,6 +493,7 @@
     var folder = (await mod.getStorageValue("downloadFolderPath")) || "";
     var done = 0;
     var failed = 0;
+    var refusedInARow = 0;
     var lastError = "";
 
     for (var start = 0; start < ids.length; start += 50) {
@@ -292,7 +509,7 @@
         setStatus("Скачиваю " + (done + failed + 1) + " из " + ids.length + ": " + title);
 
         try {
-          var info = await getDownloadInfo(track.id, quality);
+          var info = await getDownloadInfo(track.id, quality, ids.length === 1);
           if (!info) {
             failed++;
             lastError = "Яндекс не отдал ссылку на файл.";
@@ -304,10 +521,14 @@
             lastError = result.error;
           } else {
             done++;
+            refusedInARow = 0;
           }
         } catch (e) {
           failed++;
+          refusedInARow++;
           lastError = explain(e);
+          // No point in walking a 500-track playlist if Yandex refuses every link.
+          if (!done && refusedInARow >= 3) return setStatus(lastError);
         }
       }
     }
@@ -467,16 +688,16 @@
     header.appendChild(
       el("div", "font:800 20px/1 Segoe UI,Arial,sans-serif;letter-spacing:.3em", BRAND + " " + EDITION),
     );
-    var modules = window.__PULSE_BOOTED
-      ? "модули загружены"
-      : lastModuleError
-        ? "ошибка модулей: " + lastModuleError
-        : "модули грузятся";
+    var diagnostics = [
+      oauthToken() ? "аккаунт найден" : "аккаунт не найден",
+      window.__PULSE_BOOTED ? "модули загружены" : lastModuleError ? "ошибка: " + lastModuleError : "модули грузятся",
+      secrets.length > 1 ? "ключ перехвачен" : "ключ по умолчанию",
+    ];
     header.appendChild(
       el(
         "div",
         "margin-top:6px;font:400 12px/1.4 Segoe UI,Arial,sans-serif;color:#9a97b8",
-        (oauthToken() ? "Аккаунт найден" : "Аккаунт не найден — войди в Яндекс Музыку") + " · " + modules,
+        diagnostics.join(" · "),
       ),
     );
     panel.appendChild(header);

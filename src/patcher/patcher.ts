@@ -1,4 +1,4 @@
-import * as fs from "node:fs";
+﻿import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "url";
 import asar from "asar";
@@ -43,19 +43,19 @@ export async function processBuild(build: AppBuild) {
   const downloadResult = await downloadBuild(build, buildBinaryPath);
 
   if (downloadResult.isErr()) {
-    logProgress(`❌ Failed to download build ${build.version}: ${downloadResult.error}`);
+    logProgress(`вќЊ Failed to download build ${build.version}: ${downloadResult.error}`);
     return;
   } else {
-    logProgress(`✔️   Done`);
+    logProgress(`вњ”пёЏ   Done`);
   }
 
   logProgress(`[2] Extracting build ${build.version} to ${extractDir}`);
 
   try {
     await _7z.unpack(buildBinaryPath, extractDir);
-    logProgress(`✔️   Done`);
+    logProgress(`вњ”пёЏ   Done`);
   } catch (error) {
-    logProgress(`❌ Failed to extract build ${build.version}: ${error}`);
+    logProgress(`вќЊ Failed to extract build ${build.version}: ${error}`);
     return;
   }
 
@@ -65,25 +65,25 @@ export async function processBuild(build: AppBuild) {
   const appIconPath = path.resolve(path.join(extractDir, "resources", "assets", "icon.ico"));
 
   if (fs.existsSync(appAsarPath)) {
-    logProgress(`✔️   Found app.asar`);
+    logProgress(`вњ”пёЏ   Found app.asar`);
   } else {
-    logProgress(`❌ app.asar was not found inside the extracted installer for ${build.version}`);
+    logProgress(`вќЊ app.asar was not found inside the extracted installer for ${build.version}`);
     return;
   }
 
   if (fs.existsSync(appIconPath)) {
-    logProgress(`✔️   Found app icon`);
+    logProgress(`вњ”пёЏ   Found app icon`);
     fs.copyFileSync(appIconPath, path.join(buildDir, "icon.ico"));
   } else {
-    logProgress(`❌ app icon was not found inside the extracted installer for ${build.version}`);
+    logProgress(`вќЊ app icon was not found inside the extracted installer for ${build.version}`);
     return;
   }
 
   try {
     asar.extractAll(appAsarPath, buildSourceDir);
-    logProgress(`✔️   Extracted app.asar`);
+    logProgress(`вњ”пёЏ   Extracted app.asar`);
   } catch (error) {
-    logProgress(`❌ Failed to extract app.asar: ${error}`);
+    logProgress(`вќЊ Failed to extract app.asar: ${error}`);
     return;
   }
 
@@ -101,9 +101,9 @@ export async function processBuild(build: AppBuild) {
       fs.copyFileSync(pulseIco, path.join(buildDir, "src", "assets", "icon.ico"));
       fs.copyFileSync(pulseIco, path.join(buildDir, "icon.ico"));
     }
-    logProgress(`✔️   Extracted app icons`);
+    logProgress(`вњ”пёЏ   Extracted app icons`);
   } catch (error) {
-    logProgress(`❌ Failed to copy app icons: ${error}`);
+    logProgress(`вќЊ Failed to copy app icons: ${error}`);
     return;
   }
 
@@ -111,9 +111,9 @@ export async function processBuild(build: AppBuild) {
 
   try {
     fs.rmSync(tempDir, { recursive: true, force: true });
-    logProgress(`✔️   Done`);
+    logProgress(`вњ”пёЏ   Done`);
   } catch (error) {
-    logProgress(`❌ Failed to clean up temporary files: ${error}`);
+    logProgress(`вќЊ Failed to clean up temporary files: ${error}`);
     return;
   }
 
@@ -121,9 +121,9 @@ export async function processBuild(build: AppBuild) {
 
   try {
     fs.cpSync(buildSourceDir, buildModdedDir, { recursive: true });
-    logProgress(`✔️   Done`);
+    logProgress(`вњ”пёЏ   Done`);
   } catch (error) {
-    logProgress(`❌ Failed to copy sources before modding: ${error}`);
+    logProgress(`вќЊ Failed to copy sources before modding: ${error}`);
     return;
   }
 
@@ -136,18 +136,18 @@ export async function processBuild(build: AppBuild) {
     preloadJs: path.join(buildModdedDir, "preload.js"),
   };
 
-  logProgress(`🛠️  Locate static files [${Object.keys(staticFiles).join(", ")}]`);
+  logProgress(`рџ› пёЏ  Locate static files [${Object.keys(staticFiles).join(", ")}]`);
 
   for (const file of Object.keys(staticFiles) as (keyof typeof staticFiles)[]) {
     if (fs.existsSync(staticFiles[file])) {
-      logProgress(`✔️   Found ${file}`);
+      logProgress(`вњ”пёЏ   Found ${file}`);
     } else {
-      logProgress(`❌ ${file} was not found inside the sources for ${build.version}`);
+      logProgress(`вќЊ ${file} was not found inside the sources for ${build.version}`);
       return;
     }
   }
 
-  logProgress(`🛠️  Patch package.json`);
+  logProgress(`рџ› пёЏ  Patch package.json`);
 
   let packageJsonContents = JSON.parse(fs.readFileSync(staticFiles.packageJson, "utf8"));
 
@@ -156,7 +156,7 @@ export async function processBuild(build: AppBuild) {
 
   const bannedDependencies = [
     "@yandex-chats/signer",
-    // Private Yandex packages not published to the public npm registry —
+    // Private Yandex packages not published to the public npm registry вЂ”
     // they 404 during `bun install` in the modded build, so strip them out.
     "@yandex-music-int/electron-certificate-verification",
   ];
@@ -167,8 +167,8 @@ export async function processBuild(build: AppBuild) {
     Object.entries(packageJsonContents.devDependencies).filter(([key]) => !bannedDependencies.includes(key)),
   );
   packageJsonContents.name = "pulse";
-  packageJsonContents.version = "3.0.0";
-  packageJsonContents.description = "PULSE V3 — кастомный мод Яндекс Музыки";
+  packageJsonContents.version = "3.0.1";
+  packageJsonContents.description = "PULSE V3 вЂ” РєР°СЃС‚РѕРјРЅС‹Р№ РјРѕРґ РЇРЅРґРµРєСЃ РњСѓР·С‹РєРё";
   packageJsonContents.author = "Slesari690 [github.com/Slesari690]";
   packageJsonContents.build = {
     appId: "com.slesari690.pulse",
@@ -198,7 +198,7 @@ export async function processBuild(build: AppBuild) {
     files: ["**/*", "!dist/**", "!dist-pulse/**"],
   };
 
-  logProgress(`🛠️  Merge dependencies`);
+  logProgress(`рџ› пёЏ  Merge dependencies`);
 
   const rootPackageJsonContents = JSON.parse(fs.readFileSync(path.join(__projectRoot, "package.json"), "utf8"));
 
@@ -214,16 +214,16 @@ export async function processBuild(build: AppBuild) {
 
   fs.writeFileSync(staticFiles.packageJson, JSON.stringify(packageJsonContents, null, 2));
 
-  logProgress(`✔️   Done`);
+  logProgress(`вњ”пёЏ   Done`);
 
-  logProgress(`🛠️  Apply patches to index.js`);
+  logProgress(`рџ› пёЏ  Apply patches to index.js`);
 
   let indexJsContents = fs.readFileSync(staticFiles.indexJs, "utf8");
 
   // Stub out require() calls for private Yandex packages that are not
   // available on the public npm registry. We already strip them from
   // package.json (bannedDependencies) so `bun install` doesn't fail, but
-  // the original index.js still calls `require(...)` on them at runtime —
+  // the original index.js still calls `require(...)` on them at runtime вЂ”
   // which crashes the app with "Cannot find module". Replace those
   // require() calls with no-op stubs shaped to match how the module is used.
   const bannedRequireStubs: Record<string, string> = {
@@ -241,9 +241,9 @@ export async function processBuild(build: AppBuild) {
     const before = indexJsContents;
     indexJsContents = indexJsContents.replace(requirePattern, stub);
     if (indexJsContents !== before) {
-      logProgress(`🛠️  Stubbed require("${pkg}") -> ${stub}`);
+      logProgress(`рџ› пёЏ  Stubbed require("${pkg}") -> ${stub}`);
     } else {
-      logProgress(`⚠️  require("${pkg}") not found in index.js (skipped)`);
+      logProgress(`вљ пёЏ  require("${pkg}") not found in index.js (skipped)`);
     }
   }
 
@@ -265,21 +265,21 @@ export async function processBuild(build: AppBuild) {
       "constructor() { return \n",
     );
   } else {
-    logProgress(`❌ Updater class is not found in index.js`);
+    logProgress(`вќЊ Updater class is not found in index.js`);
     return;
   }
 
   if (/minWidth:\s768/g.test(indexJsContents)) {
     indexJsContents = indexJsContents.replace(/minWidth:\s768/g, "minWidth: 360");
   } else {
-    logProgress(`❌ "minWidth: 768" is not found in index.js`);
+    logProgress(`вќЊ "minWidth: 768" is not found in index.js`);
     return;
   }
 
   if (/minHeight:\s650/g.test(indexJsContents)) {
     indexJsContents = indexJsContents.replace(/minHeight:\s650/g, "minHeight: 550");
   } else {
-    logProgress(`❌ "minHeight: 650" is not found in index.js`);
+    logProgress(`вќЊ "minHeight: 650" is not found in index.js`);
     return;
   }
 
@@ -289,7 +289,7 @@ export async function processBuild(build: AppBuild) {
       "titleBarStyle: !enableSystemToolbar ? 'hidden' : 'default'",
     );
   } else {
-    logProgress(`❌ "titleBarStyle: 'hidden'" is not found in index.js`);
+    logProgress(`вќЊ "titleBarStyle: 'hidden'" is not found in index.js`);
     return;
   }
 
@@ -299,7 +299,7 @@ export async function processBuild(build: AppBuild) {
       "const window = new electron.BrowserWindow({\n title: 'PULSE',\n icon: require('path').join(process.resourcesPath, 'assets', 'icon.ico'),\n show: true",
     );
   } else {
-    logProgress(`❌ "const window = new electron.BrowserWindow({ show: false" is not found in index.js`);
+    logProgress(`вќЊ "const window = new electron.BrowserWindow({ show: false" is not found in index.js`);
     return;
   }
 
@@ -309,18 +309,18 @@ export async function processBuild(build: AppBuild) {
       "const webPreferences = {\n devTools: true, \n",
     );
   } else {
-    logProgress(`❌ "const webPreferences = {" is not found in index.js`);
+    logProgress(`вќЊ "const webPreferences = {" is not found in index.js`);
     return;
   }
 
   if (/webSecurity: true/g.test(indexJsContents)) {
     indexJsContents = indexJsContents.replace(/webSecurity: true/g, "webSecurity: false \n");
   } else {
-    logProgress(`❌ "webSecurity: true" is not found in index.js`);
+    logProgress(`вќЊ "webSecurity: true" is not found in index.js`);
     return;
   }
 
-  // Автоматически открывать devtools при запуске приложения
+  // РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРё РѕС‚РєСЂС‹РІР°С‚СЊ devtools РїСЂРё Р·Р°РїСѓСЃРєРµ РїСЂРёР»РѕР¶РµРЅРёСЏ
   if (/return window/g.test(indexJsContents)) {
     if (process.env.AUTO_OPEN_DEVTOOLS?.toLowerCase() === "true")
       indexJsContents = indexJsContents.replace(
@@ -328,7 +328,7 @@ export async function processBuild(build: AppBuild) {
         "window.webContents.openDevTools();\n" + "return window",
       );
   } else {
-    logProgress(`❌ "return window" is not found in index.js`);
+    logProgress(`вќЊ "return window" is not found in index.js`);
     return;
   }
 
@@ -347,11 +347,11 @@ export async function processBuild(build: AppBuild) {
           `,
     );
   } else {
-    logProgress(`❌ "window.once("ready-to-show", () => {" is not found in index.js`);
+    logProgress(`вќЊ "window.once("ready-to-show", () => {" is not found in index.js`);
     return;
   }
 
-  // Отключить аналитику
+  // РћС‚РєР»СЋС‡РёС‚СЊ Р°РЅР°Р»РёС‚РёРєСѓ
   if (/return window/g.test(indexJsContents)) {
     const blockedAnalyticsUrls = [
       "https://yandex.ru/clck/*",
@@ -393,35 +393,35 @@ export async function processBuild(build: AppBuild) {
     );` + "return window",
     );
   } else {
-    logProgress(`❌ "return window" is not found in index.js`);
+    logProgress(`вќЊ "return window" is not found in index.js`);
     return;
   }
 
   fs.writeFileSync(staticFiles.indexJs, indexJsContents);
 
-  logProgress(`✔️   Done`);
+  logProgress(`вњ”пёЏ   Done`);
 
-  logProgress(`🛠️  Remove startup video intro`);
+  logProgress(`рџ› пёЏ  Remove startup video intro`);
 
   const splashScreenPath = path.join(buildModdedDir, "app", "media", "splash_screen");
   if (fs.existsSync(splashScreenPath)) {
     fs.rmSync(splashScreenPath, { recursive: true, force: true });
-    logProgress(`✔️   Done`);
+    logProgress(`вњ”пёЏ   Done`);
   } else {
-    logProgress(`❌ Splash screen was not found inside the sources for ${build.version}`);
+    logProgress(`вќЊ Splash screen was not found inside the sources for ${build.version}`);
     return;
   }
 
-  logProgress(`🛠️  Copy mods to build`);
+  logProgress(`рџ› пёЏ  Copy mods to build`);
 
   const modPreloadScript = path.join(modSorcesDir, "preload.ts");
   const modMainScript = path.join(modSorcesDir, "main.js");
 
-  console.log(`\n---- 🚧 Building renderer.js ----`);
+  console.log(`\n---- рџљ§ Building renderer.js ----`);
 
   await $`bun run ui:build`;
 
-  console.log(`\n---- 🚧 Building preload.js ----`);
+  console.log(`\n---- рџљ§ Building preload.js ----`);
 
   const buildResult = await Bun.build({
     target: "browser",
@@ -442,7 +442,7 @@ export async function processBuild(build: AppBuild) {
         ${fs.readFileSync(modMainScript, "utf8")}
       })();`;
 
-  logProgress(`🛠️  Copy discordRPC script to index.js`);
+  logProgress(`рџ› пёЏ  Copy discordRPC script to index.js`);
 
   indexJsContents = indexJsContents.replaceAll(
     'mod_require("discordRPC");',
@@ -451,7 +451,7 @@ export async function processBuild(build: AppBuild) {
       })();`,
   );
 
-  logProgress(`✔️   Done`);
+  logProgress(`вњ”пёЏ   Done`);
 
   fs.cpSync(path.join(modCompiledDir), path.join(buildModdedDir, "app", "yandexMusicMod"), {
     recursive: true,
@@ -492,15 +492,15 @@ export async function processBuild(build: AppBuild) {
   fs.writeFileSync(staticFiles.indexJs, indexJsContents);
   fs.writeFileSync(staticFiles.preloadJs, preloadJsContents);
 
-  logProgress(`✔️   Done`);
+  logProgress(`вњ”пёЏ   Done`);
 
-  logProgress(`🛠️  Prettify all files in ${buildModdedDir}`);
+  logProgress(`рџ› пёЏ  Prettify all files in ${buildModdedDir}`);
 
   await prettifyDirectory(buildModdedDir);
 
-  logProgress(`✔️   Done`);
+  logProgress(`вњ”пёЏ   Done`);
 
-  logProgress(`🛠️  Build modded app`);
+  logProgress(`рџ› пёЏ  Build modded app`);
 
   await $`bun install`.cwd(buildModdedDir);
 
@@ -508,7 +508,7 @@ export async function processBuild(build: AppBuild) {
 
   await $`bunx electron-builder`.cwd(buildModdedDir);
 
-  logProgress(`✔️   Done`);
+  logProgress(`вњ”пёЏ   Done`);
 
   return progressArray;
 }

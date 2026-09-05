@@ -120,7 +120,7 @@ electron.ipcMain.handle(
     }
 
     // Generate filename from trackMeta or use default
-    const fileExtension = downloadInfo.codec.includes("flac") ? "flac" : "mp3";
+    const fileExtension = String(downloadInfo.codec || "").includes("flac") ? "flac" : "mp3";
     const trackFileName = sanitize(
       `${trackMeta.artists.map((a) => a.name).join(", ")} - ${trackMeta.title} ${trackMeta.version || ""}`,
     )
@@ -142,8 +142,11 @@ electron.ipcMain.handle(
         return { ok: false, error: "Download failed" };
       }
 
-      // Decrypt the data using the decryptYandexAudio function
-      const decryptedData = await decryptYandexAudio(response.data, downloadInfo.key);
+      // Links captured from the app itself can use the plain "raw" transport,
+      // which has no encryption key.
+      const decryptedData = downloadInfo.key
+        ? await decryptYandexAudio(response.data, downloadInfo.key)
+        : response.data;
 
       // Write decrypted data to file (awaited so errors propagate to the caller)
       await fsp.writeFile(trackFilePath, Buffer.from(decryptedData));
