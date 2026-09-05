@@ -412,6 +412,9 @@ try {
     try {
       win.webContents.setBackgroundThrottling(true);
     } catch {}
+    try {
+      win.setIcon(path.join(process.resourcesPath, "assets", "icon.ico"));
+    } catch {}
   });
 } catch {}
 
