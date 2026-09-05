@@ -3,7 +3,8 @@ import { z } from "zod";
 import { ok, err, Result } from "neverthrow";
 import * as Sentry from "@sentry/react";
 
-const PLAYER_SELECTOR = 'section[data-test-id="PLAYERBAR_DESKTOP"]';
+const PLAYER_SELECTOR =
+  'section[data-test-id="PLAYERBAR_DESKTOP"], [class*="PlayerBarDesktop"], [class*="VibeDesktopPlayer"], [class*="PlayerBar"]';
 const PLAY_BUTTON_SELECTOR = 'button[data-test-id="PLAY_BUTTON"]';
 const PAUSE_BUTTON_SELECTOR = 'button[data-test-id="PAUSE_BUTTON"]';
 
@@ -57,70 +58,63 @@ export function getProgress(): Result<{ duration: number; progress: number; posi
 }
 
 export function getTrackMeta(): Result<any, string> {
-  const player = document.querySelector(PLAYER_SELECTOR);
-  if (!player) {
+  const players = document.querySelectorAll(PLAYER_SELECTOR);
+  if (!players.length) {
     return err("Player element not found in DOM");
   }
 
-  const fiber = searchProperty(player, "entityMeta");
-  if (!fiber) {
-    return err("Fiber not found");
-  }
+  let lastError = "entityMeta not found";
 
-  const meta = fiber.entityMeta;
-  if (!meta) {
-    return err("entityMeta not found");
-  }
-
-  if (meta.title === "Промокод Upgrade") {
-    if (!hasAdsInPlayer) {
-      console.warn("[getTrackMeta] Обнаружена реклама в плеере");
-      Sentry.captureMessage("upgrade_promocode", {
-        extra: {
-          track: meta,
-        },
-      });
+  for (const player of Array.from(players)) {
+    let fiber: any = null;
+    try {
+      fiber = searchProperty(player, "entityMeta");
+    } catch (error) {
+      lastError = String(error);
+      continue;
     }
-    hasAdsInPlayer = true;
-    return err("upgrade_promocode");
+
+    const meta = fiber?.entityMeta;
+    if (!meta || !(meta.id || meta.realId) || !meta.title) {
+      lastError = "entityMeta not found";
+      continue;
+    }
+
+    if (meta.title === "Промокод Upgrade") {
+      if (!hasAdsInPlayer) {
+        console.warn("[getTrackMeta] Обнаружена реклама в плеере");
+        Sentry.captureMessage("upgrade_promocode", {
+          extra: {
+            track: meta,
+          },
+        });
+      }
+      hasAdsInPlayer = true;
+      return err("upgrade_promocode");
+    }
+
+    // Radio / «Моя волна» tracks omit fields the album player always has
+    // (genre, albumId, …). Requiring them made every vibe track look missing.
+    const entitySchema = z
+      .object({
+        id: z.union([z.string(), z.number()]).optional(),
+        realId: z.union([z.string(), z.number()]).optional(),
+        title: z.string(),
+      })
+      .passthrough();
+
+    const validatedFiber = entitySchema.safeParse(meta);
+    if (validatedFiber.error) {
+      lastError = `Validation error: ${validatedFiber.error.message}`;
+      continue;
+    }
+
+    const value = JSON.parse(JSON.stringify({ ...meta }));
+    value.id = String(value.id || value.realId);
+    return ok(value);
   }
 
-  const entitySchema = z.object({
-    id: z.string(),
-    title: z.string(),
-    durationMs: z.number(),
-    albumId: z.number(),
-    type: z.string(),
-    genre: z.string(),
-    isAvailable: z.boolean(),
-    artists: z.array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-      }),
-    ),
-    albums: z
-      .array(
-        z.object({
-          id: z.number(),
-          title: z.string(),
-          year: z.number().optional(),
-          isAvailable: z.boolean(),
-          genre: z.string().optional(),
-          trackCount: z.number(),
-        }),
-      )
-      .optional(),
-  });
-
-  const validatedFiber = entitySchema.safeParse(meta);
-
-  if (validatedFiber.error) {
-    return err(`Validation error: ${validatedFiber.error.message} for ${JSON.stringify(meta, null, 2)}`);
-  }
-
-  // convert proxy object meta to default object
-  return ok(JSON.parse(JSON.stringify({ ...meta })));
+  return err(lastError);
 }
 
 export interface TrackMeta {

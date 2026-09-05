@@ -727,7 +727,7 @@
 
   async function getDownloadInfo(trackId, quality, waitForApp) {
     trackId = String(trackId);
-    if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
+    if (cachedInfoFor(trackId)) return cachedInfoFor(trackId);
 
     var qualities = [quality].concat(
       QUALITIES.filter(function (q) {
@@ -908,12 +908,29 @@
     try {
       metadata = navigator.mediaSession && navigator.mediaSession.metadata;
     } catch (e) {}
+    var fromPlayer = null;
+    try {
+      var state = typeof window.__getPlayerState === "function" ? window.__getPlayerState() : null;
+      fromPlayer = state && state.data && state.data.trackMeta;
+    } catch (e) {}
     return {
       id: id,
-      title: (metadata && metadata.title) || "Track " + id,
-      artists: [{ name: (metadata && metadata.artist) || "Unknown" }],
-      albums: metadata && metadata.album ? [{ title: metadata.album }] : [],
+      title: (fromPlayer && fromPlayer.title) || (metadata && metadata.title) || "Track " + id,
+      artists:
+        (fromPlayer && fromPlayer.artists) ||
+        [{ name: (metadata && metadata.artist) || "Unknown" }],
+      albums:
+        (fromPlayer && fromPlayer.albums) ||
+        (metadata && metadata.album ? [{ title: metadata.album }] : []),
+      coverUri: fromPlayer && fromPlayer.coverUri,
     };
+  }
+
+  function cachedInfoFor(id) {
+    var raw = String(id || "");
+    if (fileInfoByTrack[raw]) return fileInfoByTrack[raw];
+    var bare = raw.split(":")[0];
+    return fileInfoByTrack[bare] || null;
   }
 
   async function downloadByIds(ids) {
@@ -927,27 +944,33 @@
 
     for (var start = 0; start < ids.length; start += 50) {
       var chunk = ids.slice(start, start + 50);
-      var tracks;
+      var listed = [];
       try {
-        tracks = await getTracksInfo(chunk);
+        listed = await getTracksInfo(chunk);
       } catch (error) {
-        // For a single track the media overlay knows enough to name the file,
-        // so a refused metadata read should not block the download.
-        if (ids.length !== 1) throw error;
-        tracks = [stubTrack(chunk[0])];
+        // /tracks is only needed for the file name. A 451 here used to abort
+        // the whole download even when the link was already in memory.
       }
-      if (!tracks.length && ids.length === 1) tracks = [stubTrack(chunk[0])];
 
-      for (var i = 0; i < tracks.length; i++) {
-        var track = tracks[i];
+      var byId = {};
+      listed.forEach(function (track) {
+        if (!track) return;
+        byId[String(track.id)] = track;
+        if (track.realId) byId[String(track.realId)] = track;
+      });
+
+      for (var i = 0; i < chunk.length; i++) {
+        var id = String(chunk[i]);
+        var track = byId[id] || byId[id.split(":")[0]] || stubTrack(id);
         var name = (track.artists || []).map(function (a) {
           return a.name;
         });
-        var title = (name.join(", ") || "?") + " — " + track.title;
+        var title = (name.join(", ") || "?") + " — " + (track.title || id);
         setStatus("Скачиваю " + (done + failed + 1) + " из " + ids.length + ": " + title);
 
         try {
-          var info = await getDownloadInfo(track.id, quality, ids.length === 1);
+          var info = cachedInfoFor(id) || cachedInfoFor(track.id);
+          if (!info) info = await getDownloadInfo(id, quality, ids.length === 1);
           if (!info) {
             failed++;
             lastError = "Яндекс не отдал ссылку на файл.";

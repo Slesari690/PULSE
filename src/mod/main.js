@@ -121,8 +121,9 @@ electron.ipcMain.handle(
 
     // Generate filename from trackMeta or use default
     const fileExtension = String(downloadInfo.codec || "").includes("flac") ? "flac" : "mp3";
+    const artistNames = (trackMeta.artists || []).map((a) => a && a.name).filter(Boolean).join(", ") || "Unknown";
     const trackFileName = sanitize(
-      `${trackMeta.artists.map((a) => a.name).join(", ")} - ${trackMeta.title} ${trackMeta.version || ""}`,
+      `${artistNames} - ${trackMeta.title || downloadInfo.trackId || "track"} ${trackMeta.version || ""}`,
     )
       .trim()
       .substring(0, 250);

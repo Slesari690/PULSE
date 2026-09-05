@@ -22,33 +22,17 @@ window.__getPlayerState = () => {
     };
   }
 
-  if (playbackRequest.isErr()) {
-    Sentry.captureException("Error getting player progress:", { extra: { playbackRequest: playbackRequest.error } });
-    console.error("Error getting player progress:", playbackRequest.error);
-    return {
-      enabled: isRpcEnabled,
-      showModButton: showModButton,
-      data: null,
-    };
-  }
-
-  if (isPlayingRequest.isErr()) {
-    Sentry.captureException("Error getting isPlaying:", { extra: { isPlayingRequest: isPlayingRequest.error } });
-    console.error("Error getting isPlaying:", isPlayingRequest.error);
-    return {
-      enabled: isRpcEnabled,
-      showModButton: showModButton,
-      data: null,
-    };
-  }
-
+  // Progress and play/pause are missing on radio pages. That must not hide the
+  // track itself: downloads and Discord only need the id and title.
   return {
     enabled: isRpcEnabled,
     showModButton: showModButton,
     data: {
       trackMeta: trackMetaRequest.value,
-      playback: playbackRequest.value,
-      isPlaying: isPlayingRequest.value,
+      playback: playbackRequest.isOk()
+        ? playbackRequest.value
+        : { duration: 0, progress: 0, position: 0 },
+      isPlaying: isPlayingRequest.isOk() ? isPlayingRequest.value : false,
     },
   };
 };
