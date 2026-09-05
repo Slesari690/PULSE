@@ -1141,7 +1141,7 @@
       lines.push(label + ": " + value);
     };
 
-    add("версия мода", "3.1.9");
+    add("версия мода", "3.1.10");
     add("версия клиента", window.VERSION || "неизвестна");
     add("страница", window.location.pathname + window.location.search);
     add("токен", oauthToken() ? "есть" : "нет");
@@ -1314,11 +1314,15 @@
     input.setAttribute("style", "width:38px;height:20px;cursor:pointer;accent-color:#7c5cfc");
     row.appendChild(input);
 
-    window.yandexMusicMod.getStorageValue(storageKey).then(function (value) {
-      input.checked = value === null || value === undefined ? !!defaultOn : !!value;
-    });
+    if (window.yandexMusicMod && window.yandexMusicMod.getStorageValue) {
+      window.yandexMusicMod.getStorageValue(storageKey).then(function (value) {
+        input.checked = value === null || value === undefined ? !!defaultOn : !!value;
+      });
+    } else {
+      input.checked = !!defaultOn;
+    }
     input.addEventListener("change", function () {
-      window.yandexMusicMod.setStorageValue(storageKey, input.checked);
+      if (window.yandexMusicMod) window.yandexMusicMod.setStorageValue(storageKey, input.checked);
       applyPlayerSetting(storageKey, input.checked);
       setStatus("Сохранено: " + label + (input.checked ? " — вкл" : " — выкл"));
     });
@@ -1341,17 +1345,23 @@
     input.setAttribute("style", "width:100%;accent-color:#7c5cfc;cursor:pointer");
     wrap.appendChild(input);
 
-    window.yandexMusicMod.getStorageValue(storageKey).then(function (stored) {
-      var current = typeof stored === "number" ? stored : fallback;
-      input.value = String(current);
-      value.textContent = current + (suffix || "");
-    });
+    if (window.yandexMusicMod && window.yandexMusicMod.getStorageValue) {
+      window.yandexMusicMod.getStorageValue(storageKey).then(function (stored) {
+        var current = Number(stored);
+        if (!isFinite(current)) current = fallback;
+        input.value = String(current);
+        value.textContent = current + (suffix || "");
+      });
+    } else {
+      input.value = String(fallback);
+      value.textContent = fallback + (suffix || "");
+    }
     input.addEventListener("input", function () {
       value.textContent = input.value + (suffix || "");
       applyPlayerSetting(storageKey, parseFloat(input.value));
     });
     input.addEventListener("change", function () {
-      window.yandexMusicMod.setStorageValue(storageKey, parseFloat(input.value));
+      if (window.yandexMusicMod) window.yandexMusicMod.setStorageValue(storageKey, parseFloat(input.value));
       applyPlayerSetting(storageKey, parseFloat(input.value));
       setStatus("Сохранено: " + label + " — " + input.value + (suffix || ""));
     });
@@ -1455,6 +1465,7 @@
     );
     [
       ["lossless", "Максимальное (FLAC)"],
+      ["hq", "Высокое"],
       ["nq", "Среднее"],
       ["lq", "Низкое"],
     ].forEach(function (pair) {
@@ -1463,11 +1474,13 @@
       option.textContent = pair[1];
       quality.appendChild(option);
     });
-    window.yandexMusicMod.getStorageValue("downloader/quality").then(function (value) {
-      quality.value = value || "lossless";
-    });
+    if (window.yandexMusicMod && window.yandexMusicMod.getStorageValue) {
+      window.yandexMusicMod.getStorageValue("downloader/quality").then(function (value) {
+        quality.value = value || "lossless";
+      });
+    }
     quality.addEventListener("change", function () {
-      window.yandexMusicMod.setStorageValue("downloader/quality", quality.value);
+      if (window.yandexMusicMod) window.yandexMusicMod.setStorageValue("downloader/quality", quality.value);
       setStatus("Качество: " + quality.options[quality.selectedIndex].textContent);
     });
     qualityRow.appendChild(quality);
@@ -1696,6 +1709,7 @@
 
   function applyPlaybackRate(rate) {
     playbackRate = Number(rate) || 1;
+    if (!isFinite(playbackRate) || playbackRate <= 0) playbackRate = 1;
     document.querySelectorAll("audio,video").forEach(function (media) {
       try {
         media.playbackRate = playbackRate;
@@ -1703,11 +1717,50 @@
     });
   }
 
+  function hookMediaRate() {
+    if (HTMLMediaElement.prototype.__pulsePlayHooked) return;
+    HTMLMediaElement.prototype.__pulsePlayHooked = true;
+    var nativePlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      if (playbackRate && playbackRate !== 1) {
+        try {
+          this.playbackRate = playbackRate;
+        } catch (e) {}
+      }
+      return nativePlay.apply(this, arguments);
+    };
+  }
+
+  hookMediaRate();
+
+  function applyAutoBestQuality(on) {
+    try {
+      var raw = window.localStorage.ymPlayerQuality;
+      if (!raw) return;
+      var data = JSON.parse(raw);
+      if (!data) return;
+      if (on) {
+        data.value = "high_quality";
+        data.expires = "2077-01-01T11:29:20.427Z";
+        window.localStorage.setItem("ymPlayerQuality", JSON.stringify(data));
+      }
+    } catch (e) {}
+  }
+
   function applyPlayerSetting(key, value) {
     if (key === "scale-changer/savedScale") applyScale(value);
     if (key === "playback-speed/rate") applyPlaybackRate(value);
     if (key === "global-hotkeys/enabled" && window.yandexMusicMod && window.yandexMusicMod.setHotkeysEnabled) {
       window.yandexMusicMod.setHotkeysEnabled(value !== false);
+    }
+    if (key === "autoBestQuality/enabled") applyAutoBestQuality(value !== false);
+    if (key === "ambient-theme/enabled" && window.__pulseAmbient) {
+      if (value) window.__pulseAmbient.start();
+      else window.__pulseAmbient.stop();
+    }
+    if (key === "audio-visualizer/enabled" && window.__pulseVisualizer) {
+      if (value) window.__pulseVisualizer.start();
+      else window.__pulseVisualizer.stop();
     }
   }
 
@@ -1884,8 +1937,9 @@
     mod.getStorageValue("scale-changer/savedScale").then(function (value) {
       if (value) applyScale(value);
     });
+    hookMediaRate();
     mod.getStorageValue("playback-speed/rate").then(function (value) {
-      if (typeof value === "number") applyPlaybackRate(value);
+      if (value != null && value !== "") applyPlaybackRate(Number(value));
     });
     if (mod.setHotkeysEnabled) {
       mod.getStorageValue("global-hotkeys/enabled").then(function (value) {

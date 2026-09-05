@@ -40,6 +40,9 @@ function start() {
   });
 }
 
+// @ts-ignore
+window.__pulseAmbient = { start, stop };
+
 function stop() {
   if (unsub) {
     unsub();

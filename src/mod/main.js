@@ -110,9 +110,9 @@ electron.ipcMain.handle(
       // Use saved download path from settings or fall back to legacy default
       try {
         const settings = JSON.parse(fs.readFileSync(settingsFilePath, "utf8"));
-        saveFolder = settings.downloadFolderPath || process.env.USERPROFILE + "\\YandexMod Download";
+        saveFolder = settings.downloadFolderPath || defaultDownloadPath;
       } catch (e) {
-        saveFolder = process.env.USERPROFILE + "\\YandexMod Download";
+        saveFolder = defaultDownloadPath;
       }
     }
     if (!fs.existsSync(saveFolder)) {
@@ -249,9 +249,9 @@ electron.ipcMain.on("yandexMusicMod.openDownloadDirectory", async (_ev) => {
   let saveFolder;
   try {
     const settings = JSON.parse(fs.readFileSync(settingsFilePath, "utf8"));
-    saveFolder = settings.downloadFolderPath || process.env.USERPROFILE + "\\YandexMod Download";
+    saveFolder = settings.downloadFolderPath || defaultDownloadPath;
   } catch (e) {
-    saveFolder = process.env.USERPROFILE + "\\YandexMod Download";
+    saveFolder = defaultDownloadPath;
   }
   const errorMessage = await electron.shell.openPath(saveFolder);
   if (errorMessage) {
@@ -282,9 +282,9 @@ electron.ipcMain.handle("yandexMusicMod.downloadCover", async (_ev, coverUri, fi
     let saveFolder;
     try {
       const settings = JSON.parse(fs.readFileSync(settingsFilePath, "utf8"));
-      saveFolder = settings.downloadFolderPath || process.env.USERPROFILE + "\\YandexMod Download";
+      saveFolder = settings.downloadFolderPath || defaultDownloadPath;
     } catch (e) {
-      saveFolder = process.env.USERPROFILE + "\\YandexMod Download";
+      saveFolder = defaultDownloadPath;
     }
     if (!fs.existsSync(saveFolder)) {
       fs.mkdirSync(saveFolder, { recursive: true });

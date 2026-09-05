@@ -72,7 +72,8 @@ function tryHook() {
   }
   if (sourceNode) return;
 
-  const audio = document.querySelector<HTMLAudioElement>("audio");
+  const nodes = Array.from(document.querySelectorAll<HTMLMediaElement>("audio,video"));
+  const audio = (nodes.find((el) => el && !el.paused && !el.ended) || nodes[0]) as HTMLAudioElement | undefined;
   if (!audio) return;
 
   try {
@@ -171,3 +172,16 @@ function draw() {
     }
   }
 }
+
+// @ts-ignore
+window.__pulseVisualizer = {
+  start: () => {
+    enabled = true;
+    start();
+    audioCtx?.resume?.().catch(() => {});
+  },
+  stop: () => {
+    enabled = false;
+    stop();
+  },
+};
