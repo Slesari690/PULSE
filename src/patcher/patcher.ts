@@ -167,7 +167,7 @@ export async function processBuild(build: AppBuild) {
     Object.entries(packageJsonContents.devDependencies).filter(([key]) => !bannedDependencies.includes(key)),
   );
   packageJsonContents.name = "pulse";
-  packageJsonContents.version = "3.0.3";
+  packageJsonContents.version = "3.1.0";
   packageJsonContents.description = "PULSE V3 — кастомный мод Яндекс Музыки";
   packageJsonContents.author = "Slesari690 [github.com/Slesari690]";
   packageJsonContents.build = {

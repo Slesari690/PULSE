@@ -102,6 +102,195 @@
     };
   } catch (e) {}
 
+  /* ---------- Темы оформления ---------- */
+
+  // "pulse" repeats the palette the mod shipped with, so an untouched install
+  // looks exactly as before.
+  var THEMES = [
+    {
+      id: "pulse",
+      name: "PULSE — стандартная",
+      base: "#09090f",
+      content: "#101018",
+      popover: "#16161f",
+      player: "#12121a",
+      navbar: "#0c0c14",
+      accent: "#a78bfa",
+      hover: "#c4b5fd",
+      press: "#7c5cfc",
+      onAccent: "#0b0b14",
+      second: "#22d3ee",
+    },
+    {
+      id: "neon",
+      name: "Неон — розовый на чёрном",
+      base: "#07060b",
+      content: "#100b16",
+      popover: "#180f20",
+      player: "#130c1a",
+      navbar: "#0c0812",
+      accent: "#f472b6",
+      hover: "#f9a8d4",
+      press: "#db2777",
+      onAccent: "#12060d",
+      second: "#a855f7",
+    },
+    {
+      id: "ocean",
+      name: "Океан — синий и бирюза",
+      base: "#050b14",
+      content: "#0a141f",
+      popover: "#0e1b29",
+      player: "#0b1723",
+      navbar: "#071019",
+      accent: "#38bdf8",
+      hover: "#7dd3fc",
+      press: "#0284c7",
+      onAccent: "#04121c",
+      second: "#2dd4bf",
+    },
+    {
+      id: "sunset",
+      name: "Закат — тёплый оранжевый",
+      base: "#120a07",
+      content: "#1b0f0a",
+      popover: "#24150e",
+      player: "#1d110b",
+      navbar: "#150c08",
+      accent: "#fb923c",
+      hover: "#fdba74",
+      press: "#ea580c",
+      onAccent: "#1a0c04",
+      second: "#f43f5e",
+    },
+    {
+      id: "matrix",
+      name: "Матрица — зелёный терминал",
+      base: "#030805",
+      content: "#06120c",
+      popover: "#081a10",
+      player: "#07160e",
+      navbar: "#040e09",
+      accent: "#4ade80",
+      hover: "#86efac",
+      press: "#16a34a",
+      onAccent: "#03130a",
+      second: "#22d3ee",
+    },
+    {
+      id: "sakura",
+      name: "Сакура — слива и пудра",
+      base: "#0f0912",
+      content: "#180f1d",
+      popover: "#211526",
+      player: "#1a1020",
+      navbar: "#130b17",
+      accent: "#e9a5c7",
+      hover: "#f6c9dd",
+      press: "#c76b9b",
+      onAccent: "#16070f",
+      second: "#c4b5fd",
+    },
+    {
+      id: "graphite",
+      name: "Графит — строгий серый",
+      base: "#0d0d0f",
+      content: "#151518",
+      popover: "#1d1d21",
+      player: "#17171b",
+      navbar: "#111113",
+      accent: "#d4d4d8",
+      hover: "#fafafa",
+      press: "#a1a1aa",
+      onAccent: "#0d0d0f",
+      second: "#8b8b96",
+    },
+  ];
+
+  var activeTheme = THEMES[0];
+
+  function themeById(id) {
+    for (var i = 0; i < THEMES.length; i++) {
+      if (THEMES[i].id === id) return THEMES[i];
+    }
+    return THEMES[0];
+  }
+
+  // Custom properties are written straight onto <html>: an inline !important
+  // declaration outranks any stylesheet, so the skin cannot fight back.
+  function applyTheme(id) {
+    activeTheme = themeById(id);
+    var vars = {
+      "--ym-background-color-primary-enabled-basic": activeTheme.base,
+      "--ym-background-color-primary-enabled-content": activeTheme.content,
+      "--ym-background-color-primary-enabled-popover": activeTheme.popover,
+      "--ym-background-color-primary-enabled-player": activeTheme.player,
+      "--ym-background-color-primary-enabled-header": activeTheme.base + "b8",
+      "--ym-logo-color-primary-variant": activeTheme.hover,
+      "--ym-logo-color-primary-player": activeTheme.hover,
+      "--ym-logo-color-primary-text": activeTheme.hover,
+      "--ym-controls-color-primary-default-enabled": activeTheme.accent,
+      "--ym-controls-color-primary-default-hovered": activeTheme.hover,
+      "--ym-controls-color-primary-default-pressed": activeTheme.press,
+      "--ym-controls-color-primary-on_default-enabled": activeTheme.onAccent,
+      "--ym-controls-color-primary-text-hovered": activeTheme.hover,
+      "--pulse-accent": activeTheme.accent,
+      "--pulse-accent-2": activeTheme.second,
+      "--pulse-on-accent": activeTheme.onAccent,
+    };
+    Object.keys(vars).forEach(function (name) {
+      document.documentElement.style.setProperty(name, vars[name], "important");
+    });
+
+    var style = document.getElementById("pulse-theme");
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "pulse-theme";
+      (document.head || document.documentElement).appendChild(style);
+    }
+    style.textContent =
+      "html,body{background-color:" +
+      activeTheme.base +
+      "!important}" +
+      'aside[data-test-id="NAVBAR"],[class*="NavbarDesktop_root__"]{background:' +
+      activeTheme.navbar +
+      "!important}";
+
+    restyleOwnUi();
+  }
+
+  // The mod's own button and menu follow the chosen palette too.
+  function restyleOwnUi() {
+    var gradient = "linear-gradient(135deg," + activeTheme.press + "," + activeTheme.second + ")";
+    var btn = document.getElementById("pulse-open-btn");
+    if (btn) {
+      btn.style.background = gradient;
+      btn.style.color = activeTheme.onAccent;
+    }
+    document.querySelectorAll("#pulse-menu [data-pulse-primary]").forEach(function (node) {
+      node.style.background = gradient;
+      node.style.color = activeTheme.onAccent;
+    });
+  }
+
+  // The bridge to the main process appears a moment after the page does, so the
+  // default palette goes up immediately and the saved one replaces it later.
+  function initTheme(attempt) {
+    applyTheme(activeTheme.id);
+    if (!window.yandexMusicMod || !window.yandexMusicMod.getStorageValue) {
+      if ((attempt || 0) < 40) setTimeout(function () {
+        initTheme((attempt || 0) + 1);
+      }, 250);
+      return;
+    }
+    window.yandexMusicMod
+      .getStorageValue("pulse/theme")
+      .then(function (id) {
+        applyTheme(id || "pulse");
+      })
+      .catch(function () {});
+  }
+
   /* ---------- Экономия ресурсов, пока окно не в фокусе ---------- */
 
   // Yandex keeps animating the Vibe background and the player chrome even when
@@ -148,30 +337,79 @@
 
   // The app asks for a download link of every track it plays. Reuse that answer
   // instead of trying to reproduce the request.
-  var fileInfoTemplate = null;
+  var apiHeaderTemplate = null;
+  var fileInfoQuery = null;
   var fileInfoByTrack = {};
   var lastFileInfo = null;
+
+  function isApiUrl(url) {
+    return String(url || "").indexOf("api.music.yandex.net") !== -1;
+  }
 
   function isFileInfoUrl(url) {
     return String(url || "").indexOf("get-file-info") !== -1;
   }
 
-  function rememberRequest(url, headers) {
+  // Yandex checks far more than the OAuth token: the device id, the icookie and
+  // the blackbox user ticket all take part in deciding whether a link is given
+  // out. Copying the header set of a request the app just made is the only way
+  // to look exactly like the app.
+  function rememberApiHeaders(headers) {
+    if (!headers) return;
+    var kept = {};
+    Object.keys(headers).forEach(function (name) {
+      var lower = String(name).toLowerCase();
+      // Per-request values: replaying a stale trace or deadline gets the request
+      // rejected outright.
+      if (
+        [
+          "content-type",
+          "content-length",
+          "accept-encoding",
+          "x-request-id",
+          "x-request-deadline-ms",
+          "traceparent",
+          "tracestate",
+        ].indexOf(lower) !== -1
+      ) {
+        return;
+      }
+      if (headers[name]) kept[lower] = headers[name];
+    });
+    if (Object.keys(kept).length) apiHeaderTemplate = kept;
+  }
+
+  function rememberFileInfoQuery(url) {
     try {
       var query = new URLSearchParams(String(url).split("?")[1] || "");
-      fileInfoTemplate = {
-        codecs: query.get("codecs"),
-        transports: query.get("transports"),
-        headers: headers || {},
-      };
+      if (!query.get("codecs")) return;
+      fileInfoQuery = { codecs: query.get("codecs"), transports: query.get("transports") };
     } catch (e) {}
   }
 
-  function rememberResponse(data) {
-    var info = data && data.downloadInfo;
-    if (!info || !info.trackId || !info.url) return;
-    fileInfoByTrack[String(info.trackId)] = info;
-    lastFileInfo = info;
+  // Depending on the endpoint Yandex answers with a single url or a list of
+  // mirrors; the main process only knows about downloadInfo.url.
+  function normalizeInfo(info) {
+    if (!info || info.error || !info.trackId) return null;
+    if (!info.url && Array.isArray(info.urls) && info.urls.length) info.url = info.urls[0];
+    return info.url ? info : null;
+  }
+
+  function rememberDownloadInfo(info) {
+    var normalized = normalizeInfo(info);
+    if (!normalized) return;
+    fileInfoByTrack[String(normalized.trackId)] = normalized;
+    lastFileInfo = normalized;
+  }
+
+  // Radio pages prefetch the whole upcoming queue through /get-file-info/batch,
+  // whose answer carries downloadInfos[] instead of a single downloadInfo. That
+  // is why "Моя волна" used to yield nothing to reuse.
+  function rememberFileInfoResponse(data, depth) {
+    if (!data || typeof data !== "object" || (depth || 0) > 3) return;
+    rememberDownloadInfo(data.downloadInfo);
+    if (Array.isArray(data.downloadInfos)) data.downloadInfos.forEach(rememberDownloadInfo);
+    if (data.result) rememberFileInfoResponse(data.result, (depth || 0) + 1);
   }
 
   try {
@@ -195,16 +433,18 @@
 
     XMLHttpRequest.prototype.send = function () {
       var self = this;
+      if (isApiUrl(this.__pulseUrl) && !this.__pulseMine) rememberApiHeaders(this.__pulseHeaders);
+
       if (isFileInfoUrl(this.__pulseUrl)) {
-        rememberRequest(this.__pulseUrl, this.__pulseHeaders);
+        rememberFileInfoQuery(this.__pulseUrl);
         this.addEventListener("load", function () {
           try {
-            rememberResponse(JSON.parse(self.responseText));
+            rememberFileInfoResponse(JSON.parse(self.responseText));
           } catch (e) {}
         });
       }
 
-      if (String(this.__pulseUrl).indexOf("api.music.yandex.net") !== -1) {
+      if (isApiUrl(this.__pulseUrl)) {
         this.addEventListener("readystatechange", function () {
           if (self.readyState !== 4) return;
           if (self.responseType !== "" && self.responseType !== "text") return;
@@ -235,7 +475,7 @@
     window.fetch = function (input, init) {
       var url = typeof input === "string" ? input : (input && input.url) || "";
       var promise = nativeFetch.apply(this, arguments);
-      if (isFileInfoUrl(url)) {
+      if (isApiUrl(url)) {
         var headers = {};
         try {
           var source = (init && init.headers) || (input && input.headers);
@@ -249,12 +489,17 @@
             });
           }
         } catch (e) {}
-        rememberRequest(url, headers);
+        rememberApiHeaders(headers);
+      }
+      if (isFileInfoUrl(url)) {
+        rememberFileInfoQuery(url);
         promise
           .then(function (response) {
             return response.clone().json();
           })
-          .then(rememberResponse)
+          .then(function (data) {
+            rememberFileInfoResponse(data);
+          })
           .catch(function () {});
       }
       return promise;
@@ -262,6 +507,8 @@
   } catch (e) {}
 
   /* ---------- Работа с API Яндекса ---------- */
+
+  var lastApiStatus = null;
 
   function oauthToken() {
     try {
@@ -285,12 +532,25 @@
   }
 
   function apiHeaders(skipAuth) {
-    return {
-      Authorization: skipAuth ? undefined : oauthToken(),
-      "X-Yandex-Music-Client": "YandexMusicDesktopAppWindows/" + (window.VERSION || "5.118.1"),
-      "X-Yandex-Music-Frontend": "new",
-      "X-Yandex-Music-Without-Invocation-Info": "1",
+    var headers = {
+      "x-yandex-music-client": "YandexMusicDesktopAppWindows/" + (window.VERSION || "5.118.1"),
+      "x-yandex-music-frontend": "new",
+      "x-yandex-music-without-invocation-info": "1",
     };
+
+    // Whatever the app sent last wins: it carries the device id, the icookie and
+    // the blackbox ticket, and without those Yandex answers 451.
+    if (apiHeaderTemplate) {
+      Object.keys(apiHeaderTemplate).forEach(function (name) {
+        headers[name] = apiHeaderTemplate[name];
+      });
+    }
+
+    var token = oauthToken();
+    if (skipAuth) delete headers.authorization;
+    else if (token) headers.authorization = token;
+
+    return headers;
   }
 
   // Must run inside the renderer: Yandex answers 451 to the very same request
@@ -299,6 +559,7 @@
     return new Promise(function (resolve) {
       var xhr = new XMLHttpRequest();
       xhr.open("GET", url, true);
+      xhr.__pulseMine = true;
       xhr.withCredentials = true;
       Object.keys(headers).forEach(function (name) {
         if (headers[name]) xhr.setRequestHeader(name, headers[name]);
@@ -333,6 +594,7 @@
       res = { status: (viaMain && viaMain.status) || 0, data: viaMain && viaMain.data };
     }
 
+    lastApiStatus = res.status;
     if (res.status !== 200) {
       var error = new Error("HTTP " + res.status);
       error.status = res.status;
@@ -350,35 +612,45 @@
     return btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(sig)))).slice(0, -1);
   }
 
-  var CODECS = ["flac", "aac", "he-aac", "mp3", "flac-mp4", "aac-mp4", "he-aac-mp4"];
-  var TRANSPORTS = "encraw";
+  // Taken from the client itself: its own downloader asks for these four codecs
+  // and skips the mp4 containers the streaming path uses.
+  var CODECS = "flac,aac,he-aac,mp3";
+  // "raw" hands back a plain file, "encraw" an encrypted one that has to be run
+  // through the key from downloadInfo, so plain is tried first.
+  var TRANSPORTS = ["raw", "encraw"];
+  var QUALITIES = ["lossless", "hq", "nq", "lq"];
 
-  async function requestDownloadInfo(trackId, quality, secret) {
-    var codecs = (fileInfoTemplate && fileInfoTemplate.codecs) || CODECS.join(",");
-    var transports = (fileInfoTemplate && fileInfoTemplate.transports) || TRANSPORTS;
-    var headers = fileInfoTemplate && fileInfoTemplate.headers;
+  // Same string the app signs: ts, id, quality, codecs and transports glued
+  // together with no separators.
+  async function requestDownloadInfo(trackId, quality, transport, secret, batch) {
+    var codecs = CODECS;
     var ts = Math.floor(Date.now() / 1000);
-    var sign = await hmacSign(secret, ts + trackId + quality + codecs.split(",").join("") + transports);
+    var sign = await hmacSign(secret, ts + trackId + quality + codecs.split(",").join("") + transport);
     var path =
-      "/get-file-info?ts=" +
+      "/get-file-info" +
+      (batch ? "/batch?ts=" : "?ts=") +
       ts +
-      "&trackId=" +
+      (batch ? "&trackIds=" : "&trackId=") +
       encodeURIComponent(trackId) +
       "&quality=" +
       encodeURIComponent(quality) +
       "&codecs=" +
       encodeURIComponent(codecs) +
       "&transports=" +
-      encodeURIComponent(transports) +
+      encodeURIComponent(transport) +
       "&sign=" +
       encodeURIComponent(sign);
 
-    // Yandex sometimes answers with a different track for a moment after a skip.
-    for (var attempt = 0; attempt < 6; attempt++) {
-      var data = await apiGet(path, false, headers);
-      var info = data && data.downloadInfo;
+    var data = await apiGet(path);
+    rememberFileInfoResponse(data);
+
+    var candidates = [];
+    if (data && data.downloadInfo) candidates.push(data.downloadInfo);
+    if (data && Array.isArray(data.downloadInfos)) candidates = candidates.concat(data.downloadInfos);
+
+    for (var i = 0; i < candidates.length; i++) {
+      var info = normalizeInfo(candidates[i]);
       if (info && String(info.trackId) === String(trackId)) return info;
-      await sleep(200);
     }
     return null;
   }
@@ -387,29 +659,35 @@
     trackId = String(trackId);
     if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
 
-    var qualities = [quality];
-    ["lossless", "nq", "lq"].forEach(function (q) {
-      if (qualities.indexOf(q) === -1) qualities.push(q);
-    });
+    var qualities = [quality].concat(
+      QUALITIES.filter(function (q) {
+        return q !== quality;
+      }),
+    );
 
     var lastStatus = 0;
     for (var s = 0; s < secrets.length; s++) {
       for (var q = 0; q < qualities.length; q++) {
-        try {
-          var info = await requestDownloadInfo(trackId, qualities[q], secrets[s]);
-          if (info) return info;
-        } catch (e) {
-          lastStatus = e.status || 0;
-          if (lastStatus !== 451 && lastStatus !== 403 && lastStatus !== 404) throw e;
+        for (var t = 0; t < TRANSPORTS.length; t++) {
+          for (var b = 0; b < 2; b++) {
+            if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
+            try {
+              var info = await requestDownloadInfo(trackId, qualities[q], TRANSPORTS[t], secrets[s], b === 1);
+              if (info) return info;
+            } catch (e) {
+              lastStatus = e.status || 0;
+              // Anything other than a refusal means retrying is pointless.
+              if (lastStatus !== 451 && lastStatus !== 403 && lastStatus !== 404) throw e;
+            }
+          }
         }
-        if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
       }
     }
 
     // Last resort for a single track: the app fetches the link itself while the
     // track plays, so give it a few seconds to do the work for us.
     if (waitForApp) {
-      for (var wait = 0; wait < 20; wait++) {
+      for (var wait = 0; wait < 24; wait++) {
         if (fileInfoByTrack[trackId]) return fileInfoByTrack[trackId];
         await sleep(250);
       }
@@ -501,9 +779,15 @@
   function explain(error) {
     var status = error && error.status;
     if (status === 451 || status === 403) {
-      return oauthToken()
-        ? "Яндекс не отдал ссылку (" + status + "). Включи трек в плеере, дай ему проиграть пару секунд и нажми снова — PULSE возьмёт ссылку из самого приложения."
-        : "Нет авторизации: PULSE не видит твой аккаунт. Войди в Яндекс Музыку внутри PULSE и повтори.";
+      if (!oauthToken()) return "Нет авторизации: PULSE не видит твой аккаунт. Войди в Яндекс Музыку внутри PULSE и повтори.";
+      if (!apiHeaderTemplate) {
+        return (
+          "Яндекс отказал (" +
+          status +
+          "). PULSE ещё не подсмотрел заголовки клиента: включи любой трек, дай ему проиграть пару секунд и повтори."
+        );
+      }
+      return "Яндекс отказал (" + status + ") по всем качествам и форматам. Похоже, трек недоступен именно этому аккаунту.";
     }
     if (status === 404) return "Трек недоступен для скачивания.";
     if (status === 0) return "Нет связи с api.music.yandex.net.";
@@ -627,10 +911,17 @@
     var base =
       "height:40px;padding:0 14px;border-radius:12px;cursor:pointer;font:600 13px/40px Segoe UI,Arial,sans-serif;text-align:center;";
     var skin = primary
-      ? "border:0;background:linear-gradient(135deg,#7c5cfc,#22d3ee);color:#0b0b14;font-weight:800;"
+      ? "border:0;background:linear-gradient(135deg," +
+        activeTheme.press +
+        "," +
+        activeTheme.second +
+        ");color:" +
+        activeTheme.onAccent +
+        ";font-weight:800;"
       : "border:1px solid rgba(255,255,255,.16);background:#1a1a26;color:#f4f1ff;";
     var node = el("button", base + skin, label);
     node.type = "button";
+    if (primary) node.setAttribute("data-pulse-primary", "1");
     return node;
   }
 
@@ -691,6 +982,30 @@
     return wrap;
   }
 
+  function selectRow(label, options, current, onPick) {
+    var row = el("div", "display:flex;align-items:center;justify-content:space-between;gap:12px");
+    row.appendChild(el("span", "font:400 13px/1.3 Segoe UI,Arial,sans-serif;color:#e8e6f5", label));
+
+    var select = document.createElement("select");
+    select.setAttribute(
+      "style",
+      "flex:1;max-width:200px;height:34px;border-radius:10px;background:#1a1a26;color:#fff;" +
+        "border:1px solid rgba(255,255,255,.16);padding:0 8px;cursor:pointer",
+    );
+    options.forEach(function (pair) {
+      var option = document.createElement("option");
+      option.value = pair[0];
+      option.textContent = pair[1];
+      select.appendChild(option);
+    });
+    select.value = current;
+    select.addEventListener("change", function () {
+      onPick(select.value, select.options[select.selectedIndex].textContent);
+    });
+    row.appendChild(select);
+    return row;
+  }
+
   function closeMenu() {
     var root = document.getElementById("pulse-menu");
     if (root) root.remove();
@@ -721,10 +1036,14 @@
     header.appendChild(
       el("div", "font:800 20px/1 Segoe UI,Arial,sans-serif;letter-spacing:.3em", BRAND + " " + EDITION),
     );
+    var cached = Object.keys(fileInfoByTrack).length;
     var diagnostics = [
       oauthToken() ? "аккаунт найден" : "аккаунт не найден",
       window.__PULSE_BOOTED ? "модули загружены" : lastModuleError ? "ошибка: " + lastModuleError : "модули грузятся",
       secrets.length > 1 ? "ключ перехвачен" : "ключ по умолчанию",
+      apiHeaderTemplate ? "заголовки клиента есть" : "заголовки не перехвачены",
+      "ссылок в памяти: " + cached,
+      lastApiStatus === null ? "запросов не было" : "последний ответ API: " + lastApiStatus,
     ];
     header.appendChild(
       el(
@@ -795,9 +1114,50 @@
     };
     body.appendChild(openBtn);
 
+    body.appendChild(sectionTitle("ТЕМА ПЛЕЕРА"));
+    body.appendChild(
+      selectRow(
+        "Тема",
+        THEMES.map(function (theme) {
+          return [theme.id, theme.name];
+        }),
+        activeTheme.id,
+        function (id, name) {
+          applyTheme(id);
+          window.yandexMusicMod.setStorageValue("pulse/theme", id);
+          setStatus("Тема: " + name);
+        },
+      ),
+    );
+
+    var swatches = el("div", "display:flex;gap:6px;flex-wrap:wrap");
+    THEMES.forEach(function (theme) {
+      var dot = el(
+        "button",
+        "width:34px;height:34px;border-radius:10px;cursor:pointer;padding:0;" +
+          "border:2px solid " +
+          (theme.id === activeTheme.id ? theme.accent : "rgba(255,255,255,.12)") +
+          ";background:linear-gradient(135deg," +
+          theme.press +
+          "," +
+          theme.second +
+          ")",
+      );
+      dot.type = "button";
+      dot.title = theme.name;
+      dot.onclick = function () {
+        applyTheme(theme.id);
+        window.yandexMusicMod.setStorageValue("pulse/theme", theme.id);
+        setStatus("Тема: " + theme.name);
+        closeMenu();
+        openMenu();
+      };
+      swatches.appendChild(dot);
+    });
+    body.appendChild(swatches);
+
     body.appendChild(sectionTitle("НАСТРОЙКИ"));
     body.appendChild(toggleRow("Авто-выбор лучшего качества", "autoBestQuality/enabled", true));
-    body.appendChild(toggleRow("Кастомная тема оформления", "custom-themes/enabled", true));
     body.appendChild(toggleRow("Ambient-тема из обложки", "ambient-theme/enabled", false));
     body.appendChild(toggleRow("Аудио-визуализатор", "audio-visualizer/enabled", false));
     body.appendChild(toggleRow("Глобальные горячие клавиши", "global-hotkeys/enabled", true));
@@ -903,17 +1263,23 @@
         "style",
         "position:fixed;left:12px;bottom:86px;z-index:2147483645;height:40px;padding:0 18px;border:0;border-radius:12px;" +
           "background:linear-gradient(135deg,#7c5cfc,#22d3ee);color:#0b0b14;font:800 13px/40px Segoe UI,Arial,sans-serif;" +
-          "letter-spacing:.06em;cursor:pointer;-webkit-app-region:no-drag;box-shadow:0 10px 26px rgba(124,92,252,.45)",
+          "letter-spacing:.06em;cursor:pointer;-webkit-app-region:no-drag;box-shadow:0 10px 26px rgba(0,0,0,.45)",
       );
       document.documentElement.appendChild(btn);
+      restyleOwnUi();
     }
     btn.style.display = navbarButton ? "none" : "block";
     bind(btn);
 
     var legacy = document.getElementById("pulse-canary");
     if (legacy) legacy.remove();
+
+    // Next.js can swap the whole <head> during navigation and take the theme
+    // stylesheet with it.
+    if (!document.getElementById("pulse-theme")) applyTheme(activeTheme.id);
   }
 
+  initTheme();
   ensureButton();
   setInterval(ensureButton, 1500);
 })();
