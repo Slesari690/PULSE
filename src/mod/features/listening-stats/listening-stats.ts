@@ -1,4 +1,4 @@
-import { subscribeToTrackChanges, isPlaying, type TrackMeta } from "~/mod/features/utils/player";
+import { subscribeToTrackChanges, isPlaying, getTrackMeta, type TrackMeta } from "~/mod/features/utils/player";
 
 /**
  * Local listening statistics.
@@ -97,7 +97,6 @@ async function maybeRecord(id: string, startTs: number, endTs: number) {
 }
 
 async function getMetaById(id: string): Promise<TrackMeta | null> {
-  const { getTrackMeta } = await import("~/mod/features/utils/player");
   const r = getTrackMeta();
   if (r.isOk() && (r.value as any).id === id) return r.value as TrackMeta;
   return null;

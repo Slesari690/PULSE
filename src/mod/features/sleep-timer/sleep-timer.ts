@@ -9,6 +9,8 @@
  * We detect that by watching for the track id to change, then pausing.
  */
 
+import { getTrackMeta } from "~/mod/features/utils/player";
+
 const PLAYER_SELECTOR = 'section[data-test-id="PLAYERBAR_DESKTOP"]';
 const PAUSE_SELECTOR = 'button[data-test-id="PAUSE_BUTTON"], button[data-test-id="PLAY_BUTTON"]';
 
@@ -61,7 +63,6 @@ function tick() {
 }
 
 async function checkEndOfTrack() {
-  const { getTrackMeta } = await import("~/mod/features/utils/player");
   const meta = getTrackMeta();
   if (meta.isErr()) return;
   const id = (meta.value as any).id;

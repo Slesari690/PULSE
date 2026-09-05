@@ -1,4 +1,5 @@
 import { getTrackMeta } from "~/mod/features/utils/player";
+import { getTrackUrl, QualityEnum } from "~/mod/features/utils/api";
 
 /**
  * Global hotkeys — renderer side.
@@ -71,7 +72,6 @@ async function downloadCurrent() {
   const track = meta.value as any;
   if (!track?.id) return;
 
-  const { getTrackUrl, QualityEnum } = await import("~/mod/features/utils/api");
   const quality = (await window.yandexMusicMod.getStorageValue("downloader/quality")) as QualityEnum;
   const dl = await getTrackUrl(track.id, quality || QualityEnum.LOSSLESS);
   if (dl.isErr()) return;

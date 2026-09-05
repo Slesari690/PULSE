@@ -167,7 +167,7 @@ export async function processBuild(build: AppBuild) {
     Object.entries(packageJsonContents.devDependencies).filter(([key]) => !bannedDependencies.includes(key)),
   );
   packageJsonContents.name = "pulse";
-  packageJsonContents.version = "3.1.5";
+  packageJsonContents.version = "3.1.6";
   packageJsonContents.description = "PULSE V3 — кастомный мод Яндекс Музыки";
   packageJsonContents.author = "Slesari690 [github.com/Slesari690]";
   packageJsonContents.build = {
@@ -470,7 +470,14 @@ export async function processBuild(build: AppBuild) {
 
   let modRendererContents = fs.readFileSync(path.join(buildModdedDir, "app", "yandexMusicMod", "renderer.js"), "utf8");
 
-  modRendererContents = `(function () {\n${modRendererContents}\n})()`;
+  // executeJavaScript runs this as a classic script. Vite IIFE is enough;
+  // wrapping an ESM bundle used to leave import.meta and crash the whole UI.
+  if (modRendererContents.includes("import.meta")) {
+    throw new Error("renderer.js still contains import.meta — it will not run in Electron");
+  }
+  if (!modRendererContents.trimStart().startsWith("(function") && !modRendererContents.includes("PulseModRenderer")) {
+    modRendererContents = `(function () {\n${modRendererContents}\n})()`;
+  }
 
   fs.writeFileSync(path.join(buildModdedDir, "app", "yandexMusicMod", "renderer.js"), modRendererContents);
 

@@ -1,4 +1,4 @@
-import { subscribeToTrackChanges, getProgress, isPlaying, type TrackMeta } from "~/mod/features/utils/player";
+import { subscribeToTrackChanges, getProgress, isPlaying, getTrackMeta, type TrackMeta } from "~/mod/features/utils/player";
 import { lastfm } from "./lastfm-api";
 
 /**
@@ -122,7 +122,6 @@ async function scrobbleCurrent() {
 }
 
 async function currentMeta(): Promise<TrackMeta | null> {
-  const { getTrackMeta } = await import("~/mod/features/utils/player");
   const r = getTrackMeta();
   return r.isOk() ? (r.value as TrackMeta) : null;
 }

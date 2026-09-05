@@ -1088,7 +1088,7 @@
       lines.push(label + ": " + value);
     };
 
-    add("версия мода", "3.1.5");
+    add("версия мода", "3.1.6");
     add("версия клиента", window.VERSION || "неизвестна");
     add("страница", window.location.pathname + window.location.search);
     add("токен", oauthToken() ? "есть" : "нет");

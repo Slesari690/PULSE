@@ -6,7 +6,7 @@ import App from "./App.tsx";
 
 try {
   Sentry.init({
-    dsn: import.meta.env.VITE_PUBLIC_SENTRY_DSN!,
+    dsn: "",
     sendDefaultPii: true,
     integrations: [Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] })],
     enableLogs: true,

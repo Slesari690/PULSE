@@ -29,6 +29,9 @@ export default defineConfig(({ mode }) => {
           index: path.resolve(__dirname, "./src/mod/renderer.ts"),
         },
         output: {
+          format: "iife",
+          name: "PulseModRenderer",
+          inlineDynamicImports: true,
           entryFileNames: "renderer.js",
           chunkFileNames: "[name].js",
           assetFileNames: (assetInfo) => {

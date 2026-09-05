@@ -208,7 +208,7 @@ export default function App() {
               <div className="flex flex-col gap-0.5">
                 <span className="text-base font-extrabold tracking-[0.28em] text-white">{BRAND_NAME}</span>
                 <span className="text-xs text-violet-200/80">
-                  {BRAND_TAGLINE} · v{import.meta.env.VITE_MOD_VERSION || BRAND_VERSION}
+                  {BRAND_TAGLINE} · v{BRAND_VERSION}
                 </span>
               </div>
 
@@ -251,7 +251,7 @@ export default function App() {
             >
               {appMetaQuery.isSuccess &&
                 appMetaQuery.data &&
-                appMetaQuery.data.modStable !== import.meta.env.VITE_MOD_VERSION && (
+                appMetaQuery.data.modStable !== BRAND_VERSION && (
                   <div
                     className="m-4 py-4 px-5 flex flex-row justify-center items-center gap-3 bg-secondary border-border rounded-xl hover:scale-105 transition-all cursor-pointer"
                     onClick={() => window.open(appMetaQuery.data.downloadUrl, "_blank", "noreferrer")}
