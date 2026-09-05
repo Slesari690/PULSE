@@ -782,10 +782,25 @@
     throw refused;
   }
 
-  // Sent without a token on purpose: an authorized request marks Plus-only
-  // tracks as unavailable.
+  // Yandex refuses anonymous reads of /tracks with 451, while an authorized read
+  // marks Plus-only tracks as unavailable. So: ask as ourselves first, and only
+  // fall back to an anonymous read if that is refused. forcePlus repairs the
+  // availability flags either way.
   async function getTracksInfo(ids) {
-    return await apiGet("/tracks?trackIds=" + ids.join(",") + "&removeDuplicates=false&withProgress=true", true);
+    var path = "/tracks?trackIds=" + ids.join(",") + "&removeDuplicates=false&withProgress=true";
+    var data;
+    try {
+      data = await apiGet(path);
+    } catch (error) {
+      try {
+        data = await apiGet(path, true);
+      } catch (anonymous) {
+        anonymous.stage = "список треков";
+        throw anonymous;
+      }
+    }
+    if (data && !Array.isArray(data) && Array.isArray(data.result)) return data.result;
+    return Array.isArray(data) ? data : [];
   }
 
   function sleep(ms) {
@@ -874,7 +889,9 @@
       return (
         "Яндекс отказал (" +
         status +
-        ") по всем качествам и форматам" +
+        ") на шаге «" +
+        (error.stage || (error.trackId ? "ссылка на файл" : "неизвестен")) +
+        "»" +
         (error.trackId ? ", трек " + error.trackId : "") +
         ". Ответ сервера: " +
         (error.detail || "пустой") +
@@ -884,6 +901,19 @@
     if (status === 404) return "Трек недоступен для скачивания.";
     if (status === 0) return "Нет связи с api.music.yandex.net.";
     return String((error && error.message) || error);
+  }
+
+  function stubTrack(id) {
+    var metadata = null;
+    try {
+      metadata = navigator.mediaSession && navigator.mediaSession.metadata;
+    } catch (e) {}
+    return {
+      id: id,
+      title: (metadata && metadata.title) || "Track " + id,
+      artists: [{ name: (metadata && metadata.artist) || "Unknown" }],
+      albums: metadata && metadata.album ? [{ title: metadata.album }] : [],
+    };
   }
 
   async function downloadByIds(ids) {
@@ -897,7 +927,16 @@
 
     for (var start = 0; start < ids.length; start += 50) {
       var chunk = ids.slice(start, start + 50);
-      var tracks = await getTracksInfo(chunk);
+      var tracks;
+      try {
+        tracks = await getTracksInfo(chunk);
+      } catch (error) {
+        // For a single track the media overlay knows enough to name the file,
+        // so a refused metadata read should not block the download.
+        if (ids.length !== 1) throw error;
+        tracks = [stubTrack(chunk[0])];
+      }
+      if (!tracks.length && ids.length === 1) tracks = [stubTrack(chunk[0])];
 
       for (var i = 0; i < tracks.length; i++) {
         var track = tracks[i];
@@ -957,22 +996,53 @@
     }
   }
 
-  // On radio pages the player markup differs, so the id scraped from React can
-  // be missing. Falling back to the last captured link is a last resort: radio
-  // prefetches the upcoming track, so that link may be the *next* one.
-  function resolveCurrentTrackId() {
-    var fromPlayer = playerStateTrackId();
-    if (fromPlayer) return fromPlayer;
+  function simplifyTitle(text) {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/[\s\u2010-\u2015_.,!?"'`()\[\]]/g, "");
+  }
 
-    var scraped = findCurrentTrackId();
-    if (scraped) return scraped;
-    if (lastFileInfo && lastFileInfo.trackId) return String(lastFileInfo.trackId);
+  // The app feeds the Windows media overlay, so mediaSession always holds the
+  // title that is actually playing. Matching it against the tracks whose links
+  // were captured tells us which of them is the current one — radio prefetches
+  // the next track, so the newest link is not a safe answer.
+  async function trackIdFromMediaSession() {
+    try {
+      var metadata = navigator.mediaSession && navigator.mediaSession.metadata;
+      if (!metadata || !metadata.title) return null;
+
+      var ids = Object.keys(fileInfoByTrack);
+      if (!ids.length) return null;
+      if (ids.length === 1) return ids[0];
+
+      var wanted = simplifyTitle(metadata.title);
+      var tracks = await getTracksInfo(ids);
+      for (var i = 0; i < tracks.length; i++) {
+        if (tracks[i] && simplifyTitle(tracks[i].title) === wanted) return String(tracks[i].id);
+      }
+    } catch (e) {}
     return null;
+  }
+
+  function resolveCurrentTrackId() {
+    return playerStateTrackId() || findCurrentTrackId();
+  }
+
+  // On radio pages neither the player store nor the markup gives up the id, so
+  // the media overlay is asked before falling back to the newest captured link.
+  async function resolveCurrentTrackIdAsync() {
+    var known = resolveCurrentTrackId();
+    if (known) return known;
+
+    var matched = await trackIdFromMediaSession();
+    if (matched) return matched;
+
+    return lastFileInfo && lastFileInfo.trackId ? String(lastFileInfo.trackId) : null;
   }
 
   async function downloadCurrentTrack() {
     if (!window.yandexMusicMod) return setStatus("API мода недоступен. Перезапусти PULSE.");
-    var trackId = resolveCurrentTrackId();
+    var trackId = await resolveCurrentTrackIdAsync();
     if (!trackId) return setStatus("Трек не найден. Включи воспроизведение и нажми ещё раз.");
     await downloadByIds([trackId]);
   }
@@ -995,7 +1065,7 @@
       lines.push(label + ": " + value);
     };
 
-    add("версия мода", "3.1.3");
+    add("версия мода", "3.1.4");
     add("версия клиента", window.VERSION || "неизвестна");
     add("страница", window.location.pathname + window.location.search);
     add("токен", oauthToken() ? "есть" : "нет");
@@ -1005,10 +1075,27 @@
     var cachedIds = Object.keys(fileInfoByTrack);
     add("ссылок в памяти", cachedIds.length + (cachedIds.length ? " [" + cachedIds.slice(0, 10).join(", ") + "]" : ""));
 
+    var media = null;
+    try {
+      media = navigator.mediaSession && navigator.mediaSession.metadata;
+    } catch (e) {}
+
     add("трек из плеера", playerStateTrackId() || "не найден");
     add("трек со страницы", findCurrentTrackId() || "не найден");
+    add("медиа-оверлей", media && media.title ? media.title + " — " + (media.artist || "?") : "пусто");
     add("трек из последней ссылки", lastFileInfo ? lastFileInfo.trackId : "нет");
-    add("выбран трек", resolveCurrentTrackId() || "нет");
+
+    // Probe the metadata request separately: it runs before any link is asked
+    // for, so a refusal here stops the download before it starts.
+    try {
+      var listed = await getTracksInfo(Object.keys(fileInfoByTrack).slice(0, 2));
+      add("список треков", "получен, треков " + listed.length);
+    } catch (e) {
+      add("список треков", "HTTP " + (e.status || 0) + " — " + (e.detail || "тело пустое"));
+    }
+
+    var chosen = await resolveCurrentTrackIdAsync();
+    add("выбран трек", chosen || "нет");
 
     var requests = [];
     try {
@@ -1023,7 +1110,7 @@
     }
 
     // One live probe per quality so the report carries real server answers.
-    var probeId = resolveCurrentTrackId();
+    var probeId = chosen;
     if (probeId) {
       for (var q = 0; q < QUALITIES.length; q++) {
         try {
