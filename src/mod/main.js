@@ -426,17 +426,17 @@ try {
       watchSession(win.webContents.session);
     } catch {}
 
-    const inject = () => {
+    const inject = async () => {
       try {
+        const already = await win.webContents.executeJavaScript("!!window.__PULSE_RENDERER__");
+        if (already) return;
+        await win.webContents.executeJavaScript("window.__PULSE_RENDERER__ = true");
         const rendererPath = path.join(electron.app.getAppPath(), "app", "yandexMusicMod", "renderer.js");
         const cssPath = path.join(electron.app.getAppPath(), "app", "yandexMusicMod", "renderer.css");
         if (fs.existsSync(cssPath)) {
           win.webContents.insertCSS(fs.readFileSync(cssPath, "utf8")).catch(() => {});
         }
-        const shellPath = path.join(electron.app.getAppPath(), "app", "yandexMusicMod", "pulse-shell.js");
-        if (fs.existsSync(shellPath)) {
-          win.webContents.executeJavaScript(fs.readFileSync(shellPath, "utf8")).catch(() => {});
-        }
+        // pulse-shell.js is injected from preload, before page scripts run.
         if (fs.existsSync(rendererPath)) {
           win.webContents.executeJavaScript(fs.readFileSync(rendererPath, "utf8")).catch(() => {});
         }
@@ -445,7 +445,6 @@ try {
       }
     };
     win.webContents.on("did-finish-load", inject);
-    win.webContents.on("dom-ready", inject);
   });
 } catch {}
 

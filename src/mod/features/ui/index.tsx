@@ -26,7 +26,15 @@ try {
 const queryClient = new QueryClient();
 
 function mountModUi() {
-  if (document.getElementById("yandex-music-mod-sidebar")) return;
+  // @ts-ignore
+  if (window.__PULSE_UI_MOUNTED || document.getElementById("yandex-music-mod-sidebar")) {
+    // @ts-ignore
+    window.__PULSE_UI_MOUNTED = true;
+    return;
+  }
+
+  // @ts-ignore
+  window.__PULSE_UI_MOUNTED = true;
 
   const sidebar = document.createElement("div");
   sidebar.id = "yandex-music-mod-sidebar";
@@ -41,12 +49,11 @@ function mountModUi() {
 }
 
 function bootModUi() {
+  // @ts-ignore
+  if (window.__PULSE_UI_BOOTED) return;
+  // @ts-ignore
+  window.__PULSE_UI_BOOTED = true;
   mountModUi();
-
-  const observer = new MutationObserver(() => {
-    if (!document.getElementById("yandex-music-mod-sidebar")) mountModUi();
-  });
-  observer.observe(document.documentElement, { childList: true });
 }
 
 if (document.readyState === "loading") {

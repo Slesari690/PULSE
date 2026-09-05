@@ -1025,42 +1025,95 @@
       .replace(/[\s\u2010-\u2015_.,!?"'`()\[\]]/g, "");
   }
 
-  // The app feeds the Windows media overlay, so mediaSession always holds the
-  // title that is actually playing. Matching it against the tracks whose links
-  // were captured tells us which of them is the current one — radio prefetches
-  // the next track, so the newest link is not a safe answer.
-  async function trackIdFromMediaSession() {
+  function titlesMatch(a, b) {
+    var left = simplifyTitle(a);
+    var right = simplifyTitle(b);
+    return !!(left && right && left === right);
+  }
+
+  function artistsMatch(track, artist) {
+    var want = simplifyTitle(artist);
+    if (!want) return true;
+    var names = ((track && track.artists) || [])
+      .map(function (item) {
+        return simplifyTitle(item && item.name);
+      })
+      .join(" ");
+    return !names || names.indexOf(want) !== -1 || want.indexOf(names) !== -1;
+  }
+
+  function trackMatchesPlaying(track, title, artist) {
+    return !!(track && titlesMatch(track.title, title) && artistsMatch(track, artist));
+  }
+
+  function playingMedia() {
     try {
-      var metadata = navigator.mediaSession && navigator.mediaSession.metadata;
-      if (!metadata || !metadata.title) return null;
+      return navigator.mediaSession && navigator.mediaSession.metadata;
+    } catch (e) {
+      return null;
+    }
+  }
 
-      var ids = Object.keys(fileInfoByTrack);
-      if (!ids.length) return null;
-      if (ids.length === 1) return ids[0];
-
-      var wanted = simplifyTitle(metadata.title);
-      var tracks = await getTracksInfo(ids);
+  async function idFromTracks(ids, title, artist) {
+    var unique = [];
+    ids.forEach(function (id) {
+      id = String(id || "");
+      if (id && unique.indexOf(id) === -1) unique.push(id);
+    });
+    if (!unique.length || !title) return null;
+    try {
+      var tracks = await getTracksInfo(unique);
       for (var i = 0; i < tracks.length; i++) {
-        if (tracks[i] && simplifyTitle(tracks[i].title) === wanted) return String(tracks[i].id);
+        if (trackMatchesPlaying(tracks[i], title, artist)) return String(tracks[i].id);
       }
     } catch (e) {}
     return null;
   }
 
-  function resolveCurrentTrackId() {
-    return playerStateTrackId() || findCurrentTrackId();
+  async function trackIdFromSearch(title, artist) {
+    if (!title) return null;
+    try {
+      var query = encodeURIComponent([artist, title].filter(Boolean).join(" "));
+      var data = await apiGet("/search?text=" + query + "&type=track&page=0");
+      var results =
+        (data && data.tracks && data.tracks.results) ||
+        (data && data.result && data.result.tracks && data.result.tracks.results) ||
+        [];
+      for (var i = 0; i < results.length; i++) {
+        if (trackMatchesPlaying(results[i], title, artist)) return String(results[i].id);
+      }
+    } catch (e) {}
+    return null;
   }
 
-  // On radio pages neither the player store nor the markup gives up the id, so
-  // the media overlay is asked before falling back to the newest captured link.
+  // Newest get-file-info is often the next radio prefetch, and the player store
+  // keeps the previous entityMeta after a skip. The Windows overlay is the only
+  // source that updates with the track that is actually coming out of the speakers.
   async function resolveCurrentTrackIdAsync() {
-    var known = resolveCurrentTrackId();
-    if (known) return known;
+    var media = playingMedia();
+    var title = media && media.title;
+    var artist = media && media.artist;
+    var fromPlayer = playerStateTrackId();
+    var fromDom = findCurrentTrackId();
+    var fromLink = lastFileInfo && lastFileInfo.trackId ? String(lastFileInfo.trackId) : "";
 
-    var matched = await trackIdFromMediaSession();
-    if (matched) return matched;
+    if (title) {
+      try {
+        var state = typeof window.__getPlayerState === "function" ? window.__getPlayerState() : null;
+        var meta = state && state.data && state.data.trackMeta;
+        if (meta && meta.id && titlesMatch(meta.title, title)) return String(meta.id);
+      } catch (e) {}
 
-    return lastFileInfo && lastFileInfo.trackId ? String(lastFileInfo.trackId) : null;
+      var matched = await idFromTracks(Object.keys(fileInfoByTrack).concat([fromPlayer, fromDom, fromLink]), title, artist);
+      if (matched) return matched;
+
+      var searched = await trackIdFromSearch(title, artist);
+      if (searched) return searched;
+
+      return null;
+    }
+
+    return fromPlayer || fromDom || fromLink || null;
   }
 
   async function downloadCurrentTrack() {
@@ -1088,7 +1141,7 @@
       lines.push(label + ": " + value);
     };
 
-    add("версия мода", "3.1.7");
+    add("версия мода", "3.1.8");
     add("версия клиента", window.VERSION || "неизвестна");
     add("страница", window.location.pathname + window.location.search);
     add("токен", oauthToken() ? "есть" : "нет");
@@ -1584,13 +1637,17 @@
   }
 
   function ensureButton() {
-    // Preferred entry point is the React button in the left navbar. The floating
-    // button is only a fallback for when that button is not on screen.
-    var navbarButton = document.querySelector("#mod-sheet-container .trigger-text");
-    document.querySelectorAll("#mod-sheet-container .trigger-text, #pulse-fab, #ym-mod-open-btn").forEach(bind);
+    var container = document.getElementById("mod-sheet-container");
+    var navbarButtons = container ? container.querySelectorAll("button, .trigger-text") : [];
+    for (var extra = 1; extra < navbarButtons.length; extra++) navbarButtons[extra].remove();
+    var navbarButton = navbarButtons[0] || null;
+
+    document.querySelectorAll("#mod-sheet-container .trigger-text, #mod-sheet-container button, #pulse-fab, #ym-mod-open-btn").forEach(bind);
 
     var btn = document.getElementById("pulse-open-btn");
-    if (!btn) {
+    if (navbarButton) {
+      if (btn) btn.remove();
+    } else if (!btn) {
       btn = document.createElement("button");
       btn.id = "pulse-open-btn";
       btn.type = "button";
@@ -1603,9 +1660,8 @@
       );
       document.documentElement.appendChild(btn);
       restyleOwnUi();
+      bind(btn);
     }
-    btn.style.display = navbarButton ? "none" : "block";
-    bind(btn);
 
     var legacy = document.getElementById("pulse-canary");
     if (legacy) legacy.remove();
@@ -1713,8 +1769,14 @@
     } catch (e) {}
     var meta = rendered && rendered.data && rendered.data.trackMeta;
 
-    var id = (meta && (meta.id || meta.realId)) || findCurrentTrackId() || (lastFileInfo && lastFileInfo.trackId) || "";
-    var title = (meta && meta.title) || (media && media.title) || "";
+    var mediaTitle = media && media.title;
+    var metaTitle = meta && meta.title;
+    var id = "";
+    if (meta && (meta.id || meta.realId) && (!mediaTitle || !metaTitle || titlesMatch(metaTitle, mediaTitle))) {
+      id = String(meta.id || meta.realId);
+    }
+    if (!id) id = findCurrentTrackId() || "";
+    var title = mediaTitle || metaTitle || "";
     var artists =
       (meta && Array.isArray(meta.artists) && meta.artists.length && meta.artists) ||
       (media && media.artist ? [{ name: media.artist }] : []);

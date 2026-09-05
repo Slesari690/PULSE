@@ -42,6 +42,15 @@ export default function App() {
   const [isSheetOpen, setIsSheetOpen] = useState(IS_DEV);
   const [devtoolsEnabled, setDevtoolsEnabled] = useState(false);
   const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
+  const [ownsTrigger] = useState(() => {
+    // Renderer can be injected twice (dom-ready + did-finish-load). Only one
+    // App instance may portal the navbar button, or they sit side by side.
+    // @ts-ignore
+    if (window.__pulseTriggerOwner) return false;
+    // @ts-ignore
+    window.__pulseTriggerOwner = true;
+    return true;
+  });
 
   const appMetaQuery = useQuery({
     queryKey: ["appMeta"],
@@ -322,7 +331,7 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      {mountNode && createPortal(sheetTrigger, mountNode)}
+      {ownsTrigger && mountNode && createPortal(sheetTrigger, mountNode)}
       <NewYearSnowfallAnimation />
       <Toaster position="bottom-right" />
       {menu}
