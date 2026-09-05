@@ -22,17 +22,46 @@ window.__getPlayerState = () => {
     };
   }
 
-  // Progress and play/pause are missing on radio pages. That must not hide the
-  // track itself: downloads and Discord only need the id and title.
+  const meta = trackMetaRequest.value;
+  const audio = document.querySelector("audio");
+  let playback = playbackRequest.isOk()
+    ? playbackRequest.value
+    : { duration: 0, progress: 0, position: 0 };
+
+  // The <audio> clock is the one Discord should follow. The player chrome is
+  // missing on radio pages and its units sometimes come in milliseconds.
+  if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+    playback = {
+      duration: audio.duration,
+      position: audio.currentTime || 0,
+      progress: audio.currentTime / audio.duration,
+    };
+  } else if (playback.duration > 10_000) {
+    playback = {
+      duration: playback.duration / 1000,
+      position: (playback.position || 0) / 1000,
+      progress: playback.progress || 0,
+    };
+  } else if ((!playback.duration || playback.duration <= 0) && meta.durationMs) {
+    playback = { duration: meta.durationMs / 1000, position: playback.position || 0, progress: 0 };
+  }
+
+  if (!meta.coverUri) {
+    try {
+      const art = navigator.mediaSession?.metadata?.artwork;
+      if (art && art.length) meta.coverUri = art[art.length - 1]?.src;
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
     enabled: isRpcEnabled,
     showModButton: showModButton,
     data: {
-      trackMeta: trackMetaRequest.value,
-      playback: playbackRequest.isOk()
-        ? playbackRequest.value
-        : { duration: 0, progress: 0, position: 0 },
-      isPlaying: isPlayingRequest.isOk() ? isPlayingRequest.value : false,
+      trackMeta: meta,
+      playback,
+      isPlaying: audio ? !audio.paused : isPlayingRequest.isOk() ? isPlayingRequest.value : false,
     },
   };
 };

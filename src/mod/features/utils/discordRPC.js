@@ -4,10 +4,15 @@ const path = require("path");
 const { Client } = require("@xhayper/discord-rpc");
 
 const CLIENT_ID = "1283109459463377011";
-const ACTIVITY_COOLDOWN = 8 * 1000;
+const POLL_MS = 2000;
+const HEARTBEAT_MS = 15 * 1000;
 const SETTINGS_PATH = path.join(app.getPath("userData"), "mod_settings.json");
 
 let lastActivityChanged = 0;
+let lastTrackKey = "";
+let lastPlaying = null;
+let lastSeekPos = 0;
+let lastSeekAt = 0;
 let client = null;
 let started = false;
 
@@ -36,6 +41,8 @@ function initRpc() {
 
   client.on("ready", () => {
     console.log("[DISCORD RPC] Hooked", client.user?.username);
+    lastActivityChanged = 0;
+    lastTrackKey = "";
   });
 
   client.on("disconnected", () => {
@@ -48,6 +55,34 @@ function initRpc() {
   });
 }
 
+function clip(text, max) {
+  const value = String(text || "").trim();
+  if (value.length <= max) return value;
+  return value.slice(0, max - 1) + "…";
+}
+
+function resolveCover(coverUri) {
+  if (!coverUri) return undefined;
+  let url = String(coverUri).trim().replace(/%%/g, "400x400");
+  url = url.replace(/^https?:\/\/https?:\/\//i, "https://");
+  if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+  return url;
+}
+
+function asSeconds(value) {
+  const n = Number(value) || 0;
+  if (n <= 0) return 0;
+  return n > 10000 ? n / 1000 : n;
+}
+
+function shouldUpdate(trackKey, playing, position) {
+  if (trackKey !== lastTrackKey) return true;
+  if (playing !== lastPlaying) return true;
+  const expected = lastSeekPos + (Date.now() - lastSeekAt) / 1000;
+  if (Math.abs(position - expected) > 2.5) return true;
+  return Date.now() - lastActivityChanged >= HEARTBEAT_MS;
+}
+
 async function GetAppPlayerState() {
   const [win] = BrowserWindow.getAllWindows();
   if (!win || win.isDestroyed()) return { enabled: isRpcEnabled(), showModButton: true, data: null };
@@ -55,28 +90,73 @@ async function GetAppPlayerState() {
   try {
     return await win.webContents.executeJavaScript(`
       (function () {
-        if (typeof window.__getPlayerState === "function") {
-          try { return window.__getPlayerState(); } catch (e) {}
+        function cover(meta, media) {
+          try {
+            var art = media && media.artwork;
+            if (art && art.length) {
+              var best = art[art.length - 1];
+              if (best && best.src) return best.src;
+            }
+          } catch (e) {}
+          var raw = "";
+          if (meta) {
+            raw = meta.coverUri || meta.ogImage || "";
+            if (!raw && meta.albums && meta.albums[0]) raw = meta.albums[0].coverUri || "";
+          }
+          if (!raw) return null;
+          raw = String(raw).replace(/%%/g, "400x400");
+          return raw.indexOf("http") === 0 ? raw : "https://" + raw;
         }
-        var meta = navigator.mediaSession && navigator.mediaSession.metadata;
+
         var audio = document.querySelector("audio");
-        if (!meta || !meta.title) return { enabled: true, showModButton: true, data: null };
+        var media = null;
+        try { media = navigator.mediaSession && navigator.mediaSession.metadata; } catch (e) {}
+
+        var fromFn = null;
+        try {
+          if (typeof window.__getPlayerState === "function") fromFn = window.__getPlayerState();
+        } catch (e) {}
+
+        var meta = fromFn && fromFn.data && fromFn.data.trackMeta;
+        var title = (meta && meta.title) || (media && media.title) || "";
+        var artists = (meta && meta.artists && meta.artists.length)
+          ? meta.artists
+          : (media && media.artist ? [{ name: media.artist }] : []);
+        var id = (meta && (meta.id || meta.realId)) || "";
+
+        if (!title && !id) return { enabled: true, showModButton: true, data: null };
+
+        var duration = 0;
+        var position = 0;
+        if (audio && isFinite(audio.duration) && audio.duration > 0) {
+          duration = audio.duration;
+          position = audio.currentTime || 0;
+        } else if (fromFn && fromFn.data && fromFn.data.playback && fromFn.data.playback.duration) {
+          duration = fromFn.data.playback.duration;
+          position = fromFn.data.playback.position || 0;
+          if (duration > 10000) { duration = duration / 1000; position = position / 1000; }
+        } else if (meta && meta.durationMs) {
+          duration = meta.durationMs / 1000;
+        }
+
         return {
-          enabled: true,
+          enabled: fromFn && fromFn.enabled === false ? false : true,
           showModButton: true,
           data: {
             trackMeta: {
-              id: "",
-              title: meta.title,
-              artists: [{ name: meta.artist || "?" }],
-              coverUri: null
+              id: String(id || ""),
+              title: title || ("Track " + id),
+              version: meta && meta.version,
+              artists: artists,
+              coverUri: cover(meta, media),
+              album: (media && media.album) || (meta && meta.album) || (meta && meta.albums && meta.albums[0] && meta.albums[0].title) || ""
             },
             playback: {
-              duration: audio && isFinite(audio.duration) ? audio.duration : 0,
-              position: audio ? audio.currentTime : 0,
-              progress: 0
+              duration: duration,
+              position: position,
+              progress: duration ? position / duration : 0
             },
-            isPlaying: audio ? !audio.paused : true
+            isPlaying: audio ? !audio.paused : !!(fromFn && fromFn.data && fromFn.data.isPlaying)
           }
         };
       })()
@@ -87,55 +167,51 @@ async function GetAppPlayerState() {
 }
 
 async function updateActivity() {
-  setTimeout(updateActivity, 2000);
-  if (Date.now() - lastActivityChanged < ACTIVITY_COOLDOWN) return;
+  setTimeout(updateActivity, POLL_MS);
   if (!client || !client.user) return;
 
   try {
     if (!isRpcEnabled()) {
-      await client.user.clearActivity();
-      lastActivityChanged = Date.now();
+      if (lastTrackKey !== "__off") {
+        await client.user.clearActivity();
+        lastTrackKey = "__off";
+        lastActivityChanged = Date.now();
+      }
       return;
     }
 
     const playerState = await GetAppPlayerState();
     const data = playerState && playerState.data;
 
-    if (!data || !data.trackMeta || !data.trackMeta.title) {
-      await client.user.clearActivity();
-      lastActivityChanged = Date.now();
-      return;
-    }
-
-    if (playerState.enabled === false) {
-      await client.user.clearActivity();
-      lastActivityChanged = Date.now();
-      return;
-    }
-
-    const playing = data.isPlaying !== false;
-    if (!playing) {
-      await client.user.clearActivity();
-      lastActivityChanged = Date.now();
+    if (!data || !data.trackMeta || !data.trackMeta.title || playerState.enabled === false) {
+      if (lastTrackKey && lastTrackKey !== "__empty") {
+        await client.user.clearActivity();
+        lastTrackKey = "__empty";
+        lastActivityChanged = Date.now();
+      }
       return;
     }
 
     const meta = data.trackMeta;
-    const playback = data.playback || { duration: 0, position: 0 };
+    const duration = asSeconds(data.playback && data.playback.duration);
+    const position = Math.max(0, Math.min(asSeconds(data.playback && data.playback.position), duration || 1e9));
+    const playing = data.isPlaying !== false;
+    const trackKey = String(meta.id || "") + "|" + String(meta.title || "");
+
+    if (!shouldUpdate(trackKey, playing, position)) return;
+
     const artists = Array.isArray(meta.artists)
       ? meta.artists.map((artist) => artist && artist.name).filter(Boolean).join(", ")
       : "";
-    const cover = meta.coverUri
-      ? `https://${String(meta.coverUri).replaceAll("%%", "300x300")}`
-      : undefined;
+    const cover = resolveCover(meta.coverUri);
+    const title = meta.version ? `${meta.title} ${meta.version}` : meta.title;
 
     const activity = {
       type: 2,
-      details: meta.version ? `${meta.title} ${meta.version}` : meta.title,
-      state: artists || "PULSE",
+      details: clip(title, 128),
+      state: clip(playing ? artists || "PULSE" : (artists ? artists + " · пауза" : "пауза"), 128),
       largeImageKey: cover,
-      largeImageText: "PULSE",
-      startTimestamp: Math.round(Date.now() - (playback.position || 0) * 1000),
+      largeImageText: clip(meta.album || title || "PULSE", 128),
       buttons: [
         {
           label: "Открыть в Яндекс Музыке",
@@ -149,13 +225,19 @@ async function updateActivity() {
       instance: false,
     };
 
-    if (playback.duration > playback.position) {
-      activity.endTimestamp = Math.round(
-        Date.now() + (playback.duration - playback.position) * 1000,
-      );
+    if (playing) {
+      const start = Date.now() - position * 1000;
+      activity.startTimestamp = Math.round(start);
+      if (duration > position) {
+        activity.endTimestamp = Math.round(start + duration * 1000);
+      }
     }
 
     await client.user.setActivity(activity);
+    lastTrackKey = trackKey;
+    lastPlaying = playing;
+    lastSeekPos = position;
+    lastSeekAt = Date.now();
     lastActivityChanged = Date.now();
   } catch (error) {
     console.log("[DISCORD RPC]", error);

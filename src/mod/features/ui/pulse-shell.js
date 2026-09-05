@@ -1088,7 +1088,7 @@
       lines.push(label + ": " + value);
     };
 
-    add("версия мода", "3.1.6");
+    add("версия мода", "3.1.7");
     add("версия клиента", window.VERSION || "неизвестна");
     add("страница", window.location.pathname + window.location.search);
     add("токен", oauthToken() ? "есть" : "нет");
@@ -1683,15 +1683,59 @@
     if (selectors[action]) clickPlayerButton(selectors[action]);
   }
 
+  function coverFromAnywhere(meta, media) {
+    try {
+      var art = media && media.artwork;
+      if (art && art.length) {
+        var best = art[art.length - 1];
+        if (best && best.src) return best.src;
+      }
+    } catch (e) {}
+    var raw =
+      (meta && (meta.coverUri || meta.ogImage)) ||
+      (meta && meta.albums && meta.albums[0] && meta.albums[0].coverUri) ||
+      "";
+    if (!raw) return null;
+    raw = String(raw).replace(/%%/g, "400x400");
+    return raw.indexOf("http") === 0 ? raw : "https://" + raw;
+  }
+
   function pulseGetPlayerState() {
     var audio = document.querySelector("audio");
     var media = null;
     try {
       media = navigator.mediaSession && navigator.mediaSession.metadata;
     } catch (e) {}
-    var id = findCurrentTrackId() || (lastFileInfo && lastFileInfo.trackId) || "";
-    var title = (media && media.title) || "";
+
+    var rendered = null;
+    try {
+      if (window.__pulseRendererPlayerState) rendered = window.__pulseRendererPlayerState();
+    } catch (e) {}
+    var meta = rendered && rendered.data && rendered.data.trackMeta;
+
+    var id = (meta && (meta.id || meta.realId)) || findCurrentTrackId() || (lastFileInfo && lastFileInfo.trackId) || "";
+    var title = (meta && meta.title) || (media && media.title) || "";
+    var artists =
+      (meta && Array.isArray(meta.artists) && meta.artists.length && meta.artists) ||
+      (media && media.artist ? [{ name: media.artist }] : []);
     if (!id && !title) return { enabled: true, showModButton: true, data: null };
+
+    var duration = 0;
+    var position = 0;
+    if (audio && isFinite(audio.duration) && audio.duration > 0) {
+      duration = audio.duration;
+      position = audio.currentTime || 0;
+    } else if (rendered && rendered.data && rendered.data.playback && rendered.data.playback.duration) {
+      duration = rendered.data.playback.duration;
+      position = rendered.data.playback.position || 0;
+      if (duration > 10000) {
+        duration = duration / 1000;
+        position = position / 1000;
+      }
+    } else if (meta && meta.durationMs) {
+      duration = meta.durationMs / 1000;
+    }
+
     return {
       enabled: true,
       showModButton: true,
@@ -1699,20 +1743,33 @@
         trackMeta: {
           id: String(id || ""),
           title: title || "Track " + id,
-          artists: [{ name: (media && media.artist) || "?" }],
-          coverUri: null,
+          version: meta && meta.version,
+          artists: artists,
+          coverUri: coverFromAnywhere(meta, media),
+          album: (media && media.album) || (meta && meta.albums && meta.albums[0] && meta.albums[0].title) || "",
         },
         playback: {
-          duration: audio && isFinite(audio.duration) ? audio.duration : 0,
-          position: audio ? audio.currentTime : 0,
-          progress: 0,
+          duration: duration,
+          position: position,
+          progress: duration ? position / duration : 0,
         },
-        isPlaying: audio ? !audio.paused : true,
+        isPlaying: audio ? !audio.paused : !!(rendered && rendered.data && rendered.data.isPlaying),
       },
     };
   }
 
-  window.__getPlayerState = window.__getPlayerState || pulseGetPlayerState;
+  function claimPlayerState() {
+    if (
+      typeof window.__getPlayerState === "function" &&
+      window.__getPlayerState !== pulseGetPlayerState &&
+      !window.__pulseRendererPlayerState
+    ) {
+      window.__pulseRendererPlayerState = window.__getPlayerState;
+    }
+    window.__getPlayerState = pulseGetPlayerState;
+  }
+
+  claimPlayerState();
 
   function bootPlayerControls(attempt) {
     var mod = window.yandexMusicMod;
@@ -1725,7 +1782,7 @@
       return;
     }
 
-    if (!window.__getPlayerState) window.__getPlayerState = pulseGetPlayerState;
+    claimPlayerState();
 
     mod.getStorageValue("scale-changer/savedScale").then(function (value) {
       if (value) applyScale(value);
@@ -1759,8 +1816,10 @@
     initIdleSaver();
     initTheme();
     bootPlayerControls();
+    claimPlayerState();
     ensureButton();
     setInterval(ensureButton, 1500);
+    setInterval(claimPlayerState, 2000);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startUi);
