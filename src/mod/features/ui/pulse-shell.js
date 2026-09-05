@@ -55,23 +55,25 @@
     }
   }
 
-  function apiHeaders() {
+  function apiHeaders(skipAuth) {
     return {
-      Authorization: oauthToken(),
+      Authorization: skipAuth ? undefined : oauthToken(),
       "X-Yandex-Music-Client": "YandexMusicDesktopAppWindows/" + (window.VERSION || "5.118.1"),
       "X-Yandex-Music-Frontend": "new",
       "X-Yandex-Music-Without-Invocation-Info": "1",
     };
   }
 
-  async function apiGet(path) {
+  // Goes through the main process, so responses never pass the renderer
+  // interceptors — forcePlus has to be applied here by hand.
+  async function apiGet(path, skipAuth) {
     var res = await window.yandexMusicMod.axios({
       url: API + path,
       method: "GET",
-      headers: apiHeaders(),
+      headers: apiHeaders(skipAuth),
     });
     if (!res || res.status !== 200) throw new Error("HTTP " + (res && res.status));
-    return res.data;
+    return forcePlus(res.data);
   }
 
   async function hmacSign(data) {
@@ -111,8 +113,10 @@
     return null;
   }
 
+  // Sent without a token on purpose: an authorized request marks Plus-only
+  // tracks as unavailable.
   async function getTracksInfo(ids) {
-    return await apiGet("/tracks?trackIds=" + ids.join(",") + "&removeDuplicates=false&withProgress=true");
+    return await apiGet("/tracks?trackIds=" + ids.join(",") + "&removeDuplicates=false&withProgress=true", true);
   }
 
   function sleep(ms) {
