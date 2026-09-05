@@ -633,6 +633,7 @@
       error.detail = detail;
       throw error;
     }
+    lastApiDetail = "";
     return forcePlus(res.data);
   }
 
@@ -942,14 +943,31 @@
     );
   }
 
-  // On "Моя волна" and other radio pages the player markup differs, so the id
-  // scraped from React can be missing or stale. The link the app itself fetched
-  // last is a more reliable source than the DOM.
+  // The mod's own renderer already reads the player state straight out of the
+  // app's store — the same source Discord RPC and the scrobbler use. That is
+  // authoritative, unlike scraping the DOM.
+  function playerStateTrackId() {
+    try {
+      if (typeof window.__getPlayerState !== "function") return null;
+      var state = window.__getPlayerState();
+      var meta = state && state.data && state.data.trackMeta;
+      return meta && meta.id ? String(meta.id) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // On radio pages the player markup differs, so the id scraped from React can
+  // be missing. Falling back to the last captured link is a last resort: radio
+  // prefetches the upcoming track, so that link may be the *next* one.
   function resolveCurrentTrackId() {
+    var fromPlayer = playerStateTrackId();
+    if (fromPlayer) return fromPlayer;
+
     var scraped = findCurrentTrackId();
-    if (scraped && fileInfoByTrack[scraped]) return scraped;
+    if (scraped) return scraped;
     if (lastFileInfo && lastFileInfo.trackId) return String(lastFileInfo.trackId);
-    return scraped;
+    return null;
   }
 
   async function downloadCurrentTrack() {
@@ -977,7 +995,7 @@
       lines.push(label + ": " + value);
     };
 
-    add("версия мода", "3.1.2");
+    add("версия мода", "3.1.3");
     add("версия клиента", window.VERSION || "неизвестна");
     add("страница", window.location.pathname + window.location.search);
     add("токен", oauthToken() ? "есть" : "нет");
@@ -987,8 +1005,8 @@
     var cachedIds = Object.keys(fileInfoByTrack);
     add("ссылок в памяти", cachedIds.length + (cachedIds.length ? " [" + cachedIds.slice(0, 10).join(", ") + "]" : ""));
 
-    var scraped = findCurrentTrackId();
-    add("трек со страницы", scraped || "не найден");
+    add("трек из плеера", playerStateTrackId() || "не найден");
+    add("трек со страницы", findCurrentTrackId() || "не найден");
     add("трек из последней ссылки", lastFileInfo ? lastFileInfo.trackId : "нет");
     add("выбран трек", resolveCurrentTrackId() || "нет");
 
