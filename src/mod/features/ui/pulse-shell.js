@@ -1088,7 +1088,7 @@
       lines.push(label + ": " + value);
     };
 
-    add("версия мода", "3.1.4");
+    add("версия мода", "3.1.5");
     add("версия клиента", window.VERSION || "неизвестна");
     add("страница", window.location.pathname + window.location.search);
     add("токен", oauthToken() ? "есть" : "нет");
@@ -1266,6 +1266,7 @@
     });
     input.addEventListener("change", function () {
       window.yandexMusicMod.setStorageValue(storageKey, input.checked);
+      applyPlayerSetting(storageKey, input.checked);
       setStatus("Сохранено: " + label + (input.checked ? " — вкл" : " — выкл"));
     });
     return row;
@@ -1294,9 +1295,11 @@
     });
     input.addEventListener("input", function () {
       value.textContent = input.value + (suffix || "");
+      applyPlayerSetting(storageKey, parseFloat(input.value));
     });
     input.addEventListener("change", function () {
       window.yandexMusicMod.setStorageValue(storageKey, parseFloat(input.value));
+      applyPlayerSetting(storageKey, parseFloat(input.value));
       setStatus("Сохранено: " + label + " — " + input.value + (suffix || ""));
     });
     return wrap;
@@ -1612,11 +1615,150 @@
     if (!document.getElementById("pulse-theme")) applyTheme(activeTheme.id);
   }
 
+  var playbackRate = 1;
+
+  function applyScale(scale) {
+    scale = Number(scale);
+    if (!scale || scale === 1) {
+      var stale = document.getElementById("pulse-scale");
+      if (stale) stale.remove();
+      try {
+        document.documentElement.style.removeProperty("zoom");
+      } catch (e) {}
+      return;
+    }
+    var style = document.getElementById("pulse-scale");
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "pulse-scale";
+      (document.head || document.documentElement).appendChild(style);
+    }
+    // Chromium honours zoom on the document element. Targeting one Yandex
+    // layout class used to do nothing after they renamed it.
+    style.textContent = "html{zoom:" + scale + "}";
+  }
+
+  function applyPlaybackRate(rate) {
+    playbackRate = Number(rate) || 1;
+    document.querySelectorAll("audio,video").forEach(function (media) {
+      try {
+        media.playbackRate = playbackRate;
+      } catch (e) {}
+    });
+  }
+
+  function applyPlayerSetting(key, value) {
+    if (key === "scale-changer/savedScale") applyScale(value);
+    if (key === "playback-speed/rate") applyPlaybackRate(value);
+    if (key === "global-hotkeys/enabled" && window.yandexMusicMod && window.yandexMusicMod.setHotkeysEnabled) {
+      window.yandexMusicMod.setHotkeysEnabled(value !== false);
+    }
+  }
+
+  function clickPlayerButton(selector) {
+    var roots = document.querySelectorAll(
+      'section[data-test-id="PLAYERBAR_DESKTOP"], [class*="PlayerBar"], [class*="VibeDesktopPlayer"], body',
+    );
+    for (var i = 0; i < roots.length; i++) {
+      var btn = roots[i].querySelector(selector);
+      if (btn) {
+        btn.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function handleHotkey(action) {
+    if (action === "downloadCurrent") {
+      guard(downloadCurrentTrack)();
+      return;
+    }
+    var selectors = {
+      playPause: 'button[data-test-id="PLAY_BUTTON"], button[data-test-id="PAUSE_BUTTON"]',
+      next: 'button[data-test-id="NEXT_BUTTON"]',
+      prev: 'button[data-test-id="PREVIOUS_BUTTON"]',
+      like: 'button[data-test-id="LIKE_BUTTON"], button[aria-label*="лайк"], button[aria-label*="Like"]',
+    };
+    if (selectors[action]) clickPlayerButton(selectors[action]);
+  }
+
+  function pulseGetPlayerState() {
+    var audio = document.querySelector("audio");
+    var media = null;
+    try {
+      media = navigator.mediaSession && navigator.mediaSession.metadata;
+    } catch (e) {}
+    var id = findCurrentTrackId() || (lastFileInfo && lastFileInfo.trackId) || "";
+    var title = (media && media.title) || "";
+    if (!id && !title) return { enabled: true, showModButton: true, data: null };
+    return {
+      enabled: true,
+      showModButton: true,
+      data: {
+        trackMeta: {
+          id: String(id || ""),
+          title: title || "Track " + id,
+          artists: [{ name: (media && media.artist) || "?" }],
+          coverUri: null,
+        },
+        playback: {
+          duration: audio && isFinite(audio.duration) ? audio.duration : 0,
+          position: audio ? audio.currentTime : 0,
+          progress: 0,
+        },
+        isPlaying: audio ? !audio.paused : true,
+      },
+    };
+  }
+
+  window.__getPlayerState = window.__getPlayerState || pulseGetPlayerState;
+
+  function bootPlayerControls(attempt) {
+    var mod = window.yandexMusicMod;
+    if (!mod || !mod.getStorageValue) {
+      if ((attempt || 0) < 40) {
+        setTimeout(function () {
+          bootPlayerControls((attempt || 0) + 1);
+        }, 250);
+      }
+      return;
+    }
+
+    if (!window.__getPlayerState) window.__getPlayerState = pulseGetPlayerState;
+
+    mod.getStorageValue("scale-changer/savedScale").then(function (value) {
+      if (value) applyScale(value);
+    });
+    mod.getStorageValue("playback-speed/rate").then(function (value) {
+      if (typeof value === "number") applyPlaybackRate(value);
+    });
+    if (mod.setHotkeysEnabled) {
+      mod.getStorageValue("global-hotkeys/enabled").then(function (value) {
+        mod.setHotkeysEnabled(value !== false);
+      });
+    }
+    if (mod.onStorageChanged) {
+      mod.onStorageChanged(function (key, value) {
+        applyPlayerSetting(key, value);
+      });
+    }
+    if (mod.onMediaKey) {
+      mod.onMediaKey(function (action) {
+        handleHotkey(action);
+      });
+    }
+    setInterval(function () {
+      if (playbackRate !== 1) applyPlaybackRate(playbackRate);
+    }, 1500);
+  }
+
   // The network hooks above have to be in place before the app builds its HTTP
   // client, so this file runs from the preload — long before there is a DOM.
   function startUi() {
     initIdleSaver();
     initTheme();
+    bootPlayerControls();
     ensureButton();
     setInterval(ensureButton, 1500);
   }

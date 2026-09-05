@@ -380,6 +380,8 @@ electron.ipcMain.on("yandexMusicMod.hotkeysState", (_ev, enabled) => {
 
 // Re-register on focus regain (some systems unregister media keys when blurred)
 electron.app.on("browser-window-focus", registerHotkeys);
+if (electron.app.isReady()) registerHotkeys();
+else electron.app.whenReady().then(registerHotkeys);
 
 try {
   // Independent of any JavaScript hook in the page: Chromium reports every
@@ -478,5 +480,8 @@ try {
   else electron.app.whenReady().then(applyExisting);
 } catch {}
 
-// Discord RPC (из-за того, что main.js не бандлится а просто добавляется в оригинальный index.js, все импорты приходится делать вручную. Строчка ниже просто заменится на содержимое файла src\mod\features\utils\discordRPC.js)
-mod_require("discordRPC");
+try {
+  require(path.join(electron.app.getAppPath(), "app", "yandexMusicMod", "discord-rpc-main.js"));
+} catch (error) {
+  console.error("PULSE Discord RPC failed to start", error);
+}

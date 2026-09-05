@@ -167,7 +167,7 @@ export async function processBuild(build: AppBuild) {
     Object.entries(packageJsonContents.devDependencies).filter(([key]) => !bannedDependencies.includes(key)),
   );
   packageJsonContents.name = "pulse";
-  packageJsonContents.version = "3.1.4";
+  packageJsonContents.version = "3.1.5";
   packageJsonContents.description = "PULSE V3 — кастомный мод Яндекс Музыки";
   packageJsonContents.author = "Slesari690 [github.com/Slesari690]";
   packageJsonContents.build = {
@@ -462,6 +462,10 @@ export async function processBuild(build: AppBuild) {
   fs.copyFileSync(
     path.join(__projectRoot, "src", "mod", "features", "ui", "pulse-shell.js"),
     path.join(buildModdedDir, "app", "yandexMusicMod", "pulse-shell.js"),
+  );
+  fs.copyFileSync(
+    path.join(__projectRoot, "src", "mod", "features", "utils", "discordRPC.js"),
+    path.join(buildModdedDir, "app", "yandexMusicMod", "discord-rpc-main.js"),
   );
 
   let modRendererContents = fs.readFileSync(path.join(buildModdedDir, "app", "yandexMusicMod", "renderer.js"), "utf8");

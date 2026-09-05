@@ -11,9 +11,7 @@ async function updateScale() {
 
   const styleSheet = document.createElement("style");
   styleSheet.id = stylesheetName;
-  styleSheet.innerHTML = `div[class*="DefaultLayout_root_"] {
-  zoom: ${savedScale} !important;
-}
+  styleSheet.innerHTML = `html { zoom: ${savedScale} !important; }
 `;
   document.head.appendChild(styleSheet);
 }
