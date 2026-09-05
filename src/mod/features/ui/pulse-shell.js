@@ -45,14 +45,27 @@
     };
   } catch (e) {}
 
-  /* ---------- Работа с API Яндекса через main-процесс (без CORS) ---------- */
+  /* ---------- Работа с API Яндекса ---------- */
 
   function oauthToken() {
     try {
-      return localStorage.oauth ? "OAuth " + JSON.parse(localStorage.oauth).value : null;
-    } catch (e) {
-      return null;
-    }
+      if (localStorage.oauth) {
+        var stored = JSON.parse(localStorage.oauth);
+        if (stored && stored.value) return "OAuth " + stored.value;
+      }
+    } catch (e) {}
+
+    // The app has moved this key around between releases, so as a last resort
+    // look for anything in localStorage that looks like a Yandex token.
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var raw = localStorage.getItem(localStorage.key(i)) || "";
+        var match = raw.match(/y0_[A-Za-z0-9_\-.]{20,}/);
+        if (match) return "OAuth " + match[0];
+      }
+    } catch (e) {}
+
+    return null;
   }
 
   function apiHeaders(skipAuth) {
@@ -64,15 +77,45 @@
     };
   }
 
-  // Goes through the main process, so responses never pass the renderer
-  // interceptors — forcePlus has to be applied here by hand.
-  async function apiGet(path, skipAuth) {
-    var res = await window.yandexMusicMod.axios({
-      url: API + path,
-      method: "GET",
-      headers: apiHeaders(skipAuth),
+  // Must run inside the renderer: Yandex answers 451 to the very same request
+  // when it comes from the main process instead of the app window.
+  function xhrJson(url, headers) {
+    return new Promise(function (resolve) {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", url, true);
+      Object.keys(headers).forEach(function (name) {
+        if (headers[name]) xhr.setRequestHeader(name, headers[name]);
+      });
+      xhr.onload = function () {
+        var data = null;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch (e) {}
+        resolve({ status: xhr.status, data: data });
+      };
+      xhr.onerror = function () {
+        resolve({ status: 0, data: null });
+      };
+      xhr.send();
     });
-    if (!res || res.status !== 200) throw new Error("HTTP " + (res && res.status));
+  }
+
+  async function apiGet(path, skipAuth) {
+    var headers = apiHeaders(skipAuth);
+    var res = await xhrJson(API + path, headers);
+
+    // Fall back to the main process only for transport errors — a real HTTP
+    // status from Yandex has to be reported as is.
+    if (res.status === 0 && window.yandexMusicMod && window.yandexMusicMod.axios) {
+      var viaMain = await window.yandexMusicMod.axios({ url: API + path, method: "GET", headers: headers });
+      res = { status: (viaMain && viaMain.status) || 0, data: viaMain && viaMain.data };
+    }
+
+    if (res.status !== 200) {
+      var error = new Error("HTTP " + res.status);
+      error.status = res.status;
+      throw error;
+    }
     return forcePlus(res.data);
   }
 
@@ -85,11 +128,12 @@
     return btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(sig)))).slice(0, -1);
   }
 
-  async function getDownloadInfo(trackId, quality) {
-    var codecs = ["flac", "aac", "he-aac", "mp3", "flac-mp4", "aac-mp4", "he-aac-mp4"];
-    var transports = "encraw";
+  var CODECS = ["flac", "aac", "he-aac", "mp3", "flac-mp4", "aac-mp4", "he-aac-mp4"];
+  var TRANSPORTS = "encraw";
+
+  async function requestDownloadInfo(trackId, quality) {
     var ts = Math.floor(Date.now() / 1000);
-    var sign = await hmacSign(ts + trackId + quality + codecs.join("") + transports);
+    var sign = await hmacSign(ts + trackId + quality + CODECS.join("") + TRANSPORTS);
     var path =
       "/get-file-info?ts=" +
       ts +
@@ -98,12 +142,13 @@
       "&quality=" +
       encodeURIComponent(quality) +
       "&codecs=" +
-      encodeURIComponent(codecs.join(",")) +
+      encodeURIComponent(CODECS.join(",")) +
       "&transports=" +
-      transports +
+      TRANSPORTS +
       "&sign=" +
       encodeURIComponent(sign);
 
+    // Yandex sometimes answers with a different track for a moment after a skip.
     for (var attempt = 0; attempt < 8; attempt++) {
       var data = await apiGet(path);
       var info = data && data.downloadInfo;
@@ -111,6 +156,29 @@
       await sleep(200);
     }
     return null;
+  }
+
+  // 451 means Yandex refused this quality for the account, so step down.
+  async function getDownloadInfo(trackId, quality) {
+    var ladder = [quality];
+    ["lossless", "nq", "lq"].forEach(function (q) {
+      if (ladder.indexOf(q) === -1) ladder.push(q);
+    });
+
+    var lastStatus = 0;
+    for (var i = 0; i < ladder.length; i++) {
+      try {
+        var info = await requestDownloadInfo(trackId, ladder[i]);
+        if (info) return info;
+      } catch (e) {
+        lastStatus = e.status || 0;
+        if (lastStatus !== 451 && lastStatus !== 403 && lastStatus !== 404) throw e;
+      }
+    }
+
+    var refused = new Error("HTTP " + lastStatus);
+    refused.status = lastStatus;
+    throw refused;
   }
 
   // Sent without a token on purpose: an authorized request marks Plus-only
@@ -191,12 +259,25 @@
 
   var busy = false;
 
+  function explain(error) {
+    var status = error && error.status;
+    if (status === 451 || status === 403) {
+      return oauthToken()
+        ? "Яндекс отказал в выдаче файла (" + status + "). Перезайди в аккаунт в PULSE и попробуй ещё раз."
+        : "Нет авторизации: PULSE не видит твой аккаунт. Войди в Яндекс Музыку внутри PULSE и повтори.";
+    }
+    if (status === 404) return "Трек недоступен для скачивания.";
+    if (status === 0) return "Нет связи с api.music.yandex.net.";
+    return String((error && error.message) || error);
+  }
+
   async function downloadByIds(ids) {
     var mod = window.yandexMusicMod;
     var quality = (await mod.getStorageValue("downloader/quality")) || "lossless";
     var folder = (await mod.getStorageValue("downloadFolderPath")) || "";
     var done = 0;
     var failed = 0;
+    var lastError = "";
 
     for (var start = 0; start < ids.length; start += 50) {
       var chunk = ids.slice(start, start + 50);
@@ -210,27 +291,36 @@
         var title = (name.join(", ") || "?") + " — " + track.title;
         setStatus("Скачиваю " + (done + failed + 1) + " из " + ids.length + ": " + title);
 
-        if (track.available === false) {
-          failed++;
-          continue;
-        }
-
         try {
           var info = await getDownloadInfo(track.id, quality);
           if (!info) {
             failed++;
+            lastError = "Яндекс не отдал ссылку на файл.";
             continue;
           }
           var result = await mod.downloadTrack(info, track, folder);
-          if (result && result.error) failed++;
-          else done++;
+          if (result && result.error) {
+            failed++;
+            lastError = result.error;
+          } else {
+            done++;
+          }
         } catch (e) {
           failed++;
+          lastError = explain(e);
         }
       }
     }
 
-    setStatus("Готово. Скачано: " + done + (failed ? ", не удалось: " + failed : "") + ". Файлы в папке загрузок.");
+    if (!done) {
+      setStatus("Не скачалось ни одного трека. " + (lastError || ""));
+      return;
+    }
+    setStatus(
+      "Готово. Скачано: " +
+        done +
+        (failed ? ", не удалось: " + failed + ". " + lastError : ". Файлы в папке загрузок."),
+    );
   }
 
   async function downloadCurrentTrack() {
@@ -257,7 +347,7 @@
       Promise.resolve()
         .then(fn)
         .catch(function (e) {
-          setStatus("Ошибка: " + ((e && e.message) || e));
+          setStatus("Ошибка: " + explain(e));
         })
         .finally(function () {
           busy = false;
@@ -377,13 +467,16 @@
     header.appendChild(
       el("div", "font:800 20px/1 Segoe UI,Arial,sans-serif;letter-spacing:.3em", BRAND + " " + EDITION),
     );
+    var modules = window.__PULSE_BOOTED
+      ? "модули загружены"
+      : lastModuleError
+        ? "ошибка модулей: " + lastModuleError
+        : "модули грузятся";
     header.appendChild(
       el(
         "div",
         "margin-top:6px;font:400 12px/1.4 Segoe UI,Arial,sans-serif;color:#9a97b8",
-        window.__PULSE_BOOTED
-          ? "Все модули загружены"
-          : "Загрузка · " + (lastModuleError ? "ошибка: " + lastModuleError : "доступны плюс и скачивание"),
+        (oauthToken() ? "Аккаунт найден" : "Аккаунт не найден — войди в Яндекс Музыку") + " · " + modules,
       ),
     );
     panel.appendChild(header);
